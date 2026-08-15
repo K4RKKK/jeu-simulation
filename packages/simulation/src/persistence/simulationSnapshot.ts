@@ -1,0 +1,239 @@
+import type { EntityId, WorldId } from '@civ/shared';
+import {
+  Activity,
+  Human,
+  InteractiveResource,
+  Memory,
+  Movement,
+  Needs,
+  NeedsState,
+  Personality,
+  Transform,
+} from '../components/index.js';
+import type { SimulationClockState } from '../core/clock.js';
+import type { ComponentType } from '../core/componentType.js';
+import type { EntityManager } from '../core/entityManager.js';
+import type { SchedulerState } from '../core/scheduler.js';
+import type { WorldRngState } from '../core/rng.js';
+import type { SimulationEvent } from '../core/events.js';
+import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
+
+/**
+ * Version du schéma de snapshot.
+ *
+ * Un chargement d'une sauvegarde faite avec une version ≠ celle-ci doit être refusé :
+ * les champs peuvent avoir changé de nom, de type, ou avoir été ajoutés. Aucune
+ * migration silencieuse — le seul comportement sûr est de rejeter.
+ */
+// v5 : NeedsState.mealMaxGain ajouté.
+// v6 : configFingerprint couvre désormais aussi la génération procédurale
+// (WorldGenerationConfig) et le contenu déclaratif (biomes, ressources, profils
+// d'eau), pas seulement SimulationConfig + géométrie — voir Simulation.currentConfigFingerprint.
+// Une sauvegarde v5 était calculée avec une formule différente ; la rejeter plutôt que
+// de comparer une empreinte v5 à une empreinte v6 évite un faux « configuration
+// incompatible » ou, pire, un faux positif de compatibilité.
+// v7 : `ResourceDelta.ownerChunkKey` ajouté — la révision des ressources est
+// désormais tenue PAR CHUNK (`WorldDelta.resourceRevision`), plus par un compteur
+// global, ce qui exige de savoir à quel chunk appartient chaque delta restauré. Un
+// snapshot v6 n'a pas ce champ : le charger silencieusement produirait des entrées
+// « ownerChunkKey: undefined », un chunk fantôme dans `resourceRevisions` plutôt
+// qu'une erreur claire.
+// v8 : `Memory.lastFoodChunkX/Z` renommés `lastFoodScanX/Z` — le scan de nourriture se
+// déclenche maintenant à la distance parcourue (comme l'eau), plus au changement de
+// chunk (bug corrigé, voir `PerceptionConfig.foodRescanMoveThresholdM`). Un snapshot
+// v7 restauré silencieusement laisserait ces champs à `undefined` : comme
+// `undefined !== null`, la garde de rescan les traiterait comme « déjà scannés depuis
+// une position connue », or `distance2D(x, z, undefined, undefined)` vaut `NaN`, et
+// `NaN >= seuil` est toujours faux — l'individu resterait aveugle à toute nouvelle
+// nourriture pour le reste de la partie.
+// v9 : `ResourceDelta.localId` ajouté (adresse réseau dupliquée pour éviter de
+// rechercher le spawn correspondant à chaque reconstruction de chunk) et
+// `remainingServings` unifié en `remainingFraction01` dans `changedFields` — même forme
+// que ce que `resource:updated` diffuse au réseau. Un snapshot v8 restauré
+// silencieusement laisserait `localId: undefined` (adresse réseau invalide) et un
+// éventuel `remainingServings` que plus rien ne lit.
+// L'historique durable des événements majeurs a été ajouté de façon progressive sans
+// bumper le schéma : contrairement aux composants ou au WorldDelta, son absence ne
+// change jamais l'évolution simulée. Une sauvegarde v9 antérieure est donc restaurée
+// avec un historique vide, puis sa prochaine écriture embarque ce nouveau champ.
+export const SIMULATION_SNAPSHOT_VERSION = 9;
+
+/**
+ * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
+ *
+ * Modèle : « état réel = seed + version de génération + configuration + snapshot ».
+ * Ce que **contient** ce snapshot :
+ * - horloge (`clock`) : sans quoi le nombre de ticks écoulés serait perdu.
+ * - RNG (`rng`) : sans quoi un `wander` post-chargement partirait dans un autre sens.
+ * - entités & composants : la matière vivante du monde.
+ * - ordonnanceur (`scheduler`) : `lastRunTick`/`hasRun`, faute de quoi le premier
+ *   tick post-chargement recevrait un `deltaGameSeconds` erroné (bug subtil sur le
+ *   métabolisme et la perception).
+ * - `WorldDelta` : la seule vérité persistante sur les ressources modifiées ou
+ *   consommées.
+ * - `history` : événements majeurs bornés qui alimentent la Chronique après reconnexion.
+ * - `configFingerprint` (v3, étendu en v6) : empreinte de la `SimulationConfig` + la
+ *   géométrie du monde + (depuis v6) les paramètres de génération procédurale
+ *   (`WorldGenerationConfig`) et le contenu déclaratif (biomes, ressources, profils
+ *   d'eau). Bug corrigé en v3 : avant ce champ, une sauvegarde faite avec
+ *   `walkSpeedMps=1.4` était acceptée sans broncher par un serveur reconfiguré à `1.8`
+ *   — même seed, même `generationVersion` si on avait oublié de la bumper. Bug corrigé
+ *   en v6 : un ajustement de `hydrology.waterLevel01` ou de la toxicité d'une baie,
+ *   oublié dans le bump manuel de `generationVersion`, passait pareillement inaperçu.
+ *   Voir `configFingerprint.ts` et `Simulation.currentConfigFingerprint`.
+ *
+ * Ce qui n'y est **pas** :
+ * - le monde procédural lui-même (terrain, biomes assignés, ressources placées —
+ *   rejoué depuis la seed) — `generationVersion` en reste la seule garde contre un
+ *   changement de l'ALGORITHME de génération ; `configFingerprint` protège contre une
+ *   dérive des PARAMÈTRES qui l'alimentent (numériques ou déclaratifs), pas contre une
+ *   réécriture du code de génération lui-même.
+ * - le `WorldChangeJournal` (flux réseau volatile).
+ * - la file du `PathfindingSystem` (une requête en vol est perdue à la sauvegarde ;
+ *   le système ré-émet une requête au tick suivant si la cible existe encore) — ET,
+ *   plus largement, le cache LRU de chemins déjà résolus et la file à budget que
+ *   maintient `PathFindingService` (`@civ/pathfinding`), qui ne sont pas non plus
+ *   sérialisés. Conséquence mesurée (test « continu vs rechargé » à seed fixe,
+ *   population 10+, rechargement à mi-parcours) : une branche continue a un cache
+ *   « chaud » (trajets répétés résolus instantanément), une branche rechargée repart
+ *   d'un cache froid. Une requête résolue immédiatement dans un cas devient une requête
+ *   différée de quelques ticks dans l'autre, ce qui décale le tick auquel l'entité se
+ *   met en mouvement. Comme les streams de `WorldRng` sont consommés séquentiellement à
+ *   travers `entities.each()`, ce décalage se propage à toutes les entités traitées
+ *   après elle dans le même tick — le hash `hashWorldState` diverge de la branche
+ *   continue en quelques ticks après un rechargement, même à un point de quiescence
+ *   (aucune requête en vol). Ce n'est PAS une régression de correction : les chemins
+ *   restent valides, les humains arrivent toujours à destination — seule la
+ *   *trajectoire précise dans le temps* diverge. Le déterminisme garanti par ce
+ *   snapshot est donc : hash identique AU tick de sauvegarde, pas nécessairement
+ *   ensuite. Combler ça exigerait de sérialiser des structures internes de
+ *   `@civ/pathfinding` (cache LRU + file à budget), ce que la Règle 2 et la
+ *   cartographie des responsabilités (pathfinding ignore tout du snapshot) découragent
+ *   — accepté comme limite de scope plutôt que bug à corriger.
+ * - les métriques, l'`EventBus` et son tampon de diffusion (session-local).
+ */
+export interface SimulationSnapshot {
+  readonly version: number;
+  /** Identité permanente du monde, distincte de sa seed et de son slot de sauvegarde. */
+  readonly worldId?: WorldId;
+  readonly seed: string;
+  readonly generationVersion: string;
+  /** Empreinte de la config + géométrie du monde — voir `configFingerprint.ts`. */
+  readonly configFingerprint: string;
+  readonly clock: SimulationClockState;
+  readonly rng: WorldRngState;
+  readonly entities: EntitiesSnapshot;
+  readonly scheduler: SchedulerState;
+  readonly delta: { deltas: ResourceDelta[]; trails: TrailChunkDelta[] };
+  readonly history?: SimulationEvent[];
+  /** Absent sur les sauvegardes v9 antérieures à la repousse régionale. */
+  readonly ecologyVersion?: number;
+}
+
+export interface EntitiesSnapshot {
+  readonly nextEntityId: EntityId;
+  readonly ids: EntityId[];
+  /**
+   * Composants par nom → liste triée de `[entityId, valeur]`. La valeur est un JSON
+   * simple : les composants sont des données pures (règle 8).
+   */
+  readonly components: Record<string, [EntityId, unknown][]>;
+}
+
+/**
+ * Types de composants pris en charge par le snapshot. Ajouter un nouveau composant
+ * ECS *sans* l'ajouter ici l'exclurait de la persistance — d'où la liste centralisée.
+ * Le nom sert de clé stable côté serialization (l'index numérique de `defineComponent`
+ * dépend de l'ordre d'import et n'est pas stable entre versions).
+ *
+ * Exportée (avec `INTENTIONALLY_UNPERSISTED_COMPONENT_NAMES` ci-dessous) pour que
+ * `simulationSnapshot.componentCoverage.test.ts` puisse vérifier qu'AUCUN composant
+ * enregistré via `defineComponent` n'est absent des deux listes — un ajout muet
+ * (« Knowledge » demain, oublié ici) romprait la persistance sans qu'aucun test ne le
+ * révèle avant un redémarrage réel en production.
+ */
+export const PERSISTED_COMPONENTS: readonly ComponentType<unknown>[] = [
+  Transform,
+  Movement,
+  Human,
+  Personality,
+  Activity,
+  Needs,
+  NeedsState,
+  Memory,
+  InteractiveResource,
+];
+
+/**
+ * Composants sciemment exclus de la persistance, avec leur justification. Un composant
+ * qui n'apparaît ni ici ni dans `PERSISTED_COMPONENTS` est un composant qu'on a oublié
+ * de trancher — c'est exactement ce que le test de couverture détecte.
+ */
+export const INTENTIONALLY_UNPERSISTED_COMPONENT_NAMES: ReadonlySet<string> = new Set([
+  // Réinitialisé à zéro au chargement : un plan d'errance interrompu n'a pas besoin de
+  // survivre à un redémarrage, l'individu recommencera à errer normalement.
+  'TemporaryWanderState',
+]);
+
+const COMPONENT_BY_NAME: Map<string, ComponentType<unknown>> = new Map(
+  PERSISTED_COMPONENTS.map((type) => [type.name, type]),
+);
+
+/**
+ * Sérialise l'état des entités. Les composants non listés dans `PERSISTED_COMPONENTS`
+ * sont ignorés silencieusement : c'est la source d'un bug potentiel si un nouveau
+ * composant apparaît, d'où la liste centralisée. Un test de rappel doit vérifier que
+ * tout composant introduit y est ajouté.
+ */
+export function captureEntities(entities: EntityManager): EntitiesSnapshot {
+  const ids = entities.allEntities();
+  const components: Record<string, [EntityId, unknown][]> = {};
+  const stores = entities.storesByName();
+  for (const type of PERSISTED_COMPONENTS) {
+    const store = stores.get(type.name);
+    if (!store) {
+      components[type.name] = [];
+      continue;
+    }
+    const entries: [EntityId, unknown][] = [];
+    for (const [id, value] of store.entries()) {
+      // Copie profonde légère : sans elle, muter le composant après capture muterait
+      // le snapshot. JSON round-trip suffit pour des données pures.
+      entries.push([id, JSON.parse(JSON.stringify(value))]);
+    }
+    entries.sort((a, b) => a[0] - b[0]);
+    components[type.name] = entries;
+  }
+  return { nextEntityId: entities.nextId, ids: [...ids], components };
+}
+
+/**
+ * Restaure l'état des entités dans un `EntityManager` vidé au préalable.
+ *
+ * Chaque valeur de composant est **copiée** avant d'être injectée dans le store — bug
+ * corrigé : sans cette copie, la simulation restaurée recevait une référence directe
+ * vers l'objet du snapshot. Les systèmes mutent les composants en place
+ * (`transform.x = …`), ce qui finissait par corrompre le snapshot lui-même ; un second
+ * chargement du même snapshot recevait alors un état partiellement muté par la
+ * première simulation restaurée, brisant le déterminisme (deux simulations restaurées
+ * depuis le même snapshot devaient être indépendantes, elles ne l'étaient pas).
+ */
+export function restoreEntities(entities: EntityManager, snapshot: EntitiesSnapshot): void {
+  entities.clear();
+  for (const id of snapshot.ids) entities.restoreEntity(id);
+  // `forceNextId`, pas `restoreNextId` : on remplace l'état vivant en entier, le
+  // compteur précédent (issu d'une population initiale jetable créée avant le
+  // chargement, potentiellement plus grand que celui du snapshot) n'a plus de sens.
+  entities.forceNextId(snapshot.nextEntityId);
+  for (const [name, entries] of Object.entries(snapshot.components)) {
+    const type = COMPONENT_BY_NAME.get(name);
+    if (!type) {
+      // Composant inconnu : on refuse plutôt que d'ignorer silencieusement — un
+      // chargement partiel briserait le déterminisme sans crier gare.
+      throw new Error(`restoreEntities: composant inconnu "${name}" — schema désynchronisé ?`);
+    }
+    for (const [id, value] of entries) {
+      entities.restoreComponent(id, type, JSON.parse(JSON.stringify(value)));
+    }
+  }
+}

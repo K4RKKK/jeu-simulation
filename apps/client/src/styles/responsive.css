@@ -1,0 +1,44 @@
+@media (max-width: 760px) {
+  .topbar {
+    top: 8px;
+    width: calc(100vw - 16px);
+    padding-left: 12px;
+  }
+  .topbar__separator,
+  #hud-weather {
+    display: none;
+  }
+  .world-nav {
+    left: 8px;
+    bottom: 12px;
+    top: auto;
+    transform: none;
+    flex-direction: row;
+  }
+  .drawer {
+    top: 60px;
+    left: 8px;
+    right: 8px;
+    bottom: 66px;
+    width: auto;
+  }
+  .character-panel {
+    top: 60px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    max-height: calc(100vh - 76px);
+  }
+  .help {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

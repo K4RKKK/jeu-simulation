@@ -1,0 +1,72 @@
+.chronicle-list,
+.world-chronicle__list {
+  height: calc(100% - 58px);
+  overflow-y: auto;
+  padding-right: 3px;
+}
+.world-chronicle__empty {
+  margin: 34px 18px;
+  color: var(--faint);
+  line-height: 1.6;
+  text-align: center;
+}
+.world-chronicle__day {
+  margin-top: 20px;
+}
+.world-chronicle__day:first-child {
+  margin-top: 2px;
+}
+.world-chronicle__day-heading {
+  margin: 0 0 7px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 620;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.world-chronicle__entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.world-chronicle__entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
+  padding: 9px 0 9px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+.world-chronicle__entry::before {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--faint);
+  content: '';
+}
+.world-chronicle__entry--arrival::before {
+  background: var(--positive);
+}
+.world-chronicle__entry--death::before {
+  background: var(--danger);
+}
+.world-chronicle__entry--world::before {
+  background: var(--accent);
+}
+.world-chronicle__time {
+  color: var(--faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.world-chronicle__message {
+  line-height: 1.4;
+}
+.empty-state {
+  margin: 34px 18px;
+  color: var(--faint);
+  line-height: 1.6;
+  text-align: center;
+}

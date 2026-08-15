@@ -1,0 +1,22 @@
+{
+  "name": "@civ/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@civ/shared": "workspace:*",
+    "three": "^0.171.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.171.0",
+    "happy-dom": "^20.11.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

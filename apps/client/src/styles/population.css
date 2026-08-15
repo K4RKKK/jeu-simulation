@@ -1,0 +1,118 @@
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--faint);
+}
+.search-field input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+.search-field input::placeholder {
+  color: #777b77;
+}
+.population-list {
+  height: calc(100% - 88px);
+  margin: 12px -7px 0;
+  padding: 0 7px;
+  overflow-y: auto;
+}
+.population-section-title {
+  margin: 15px 10px 5px;
+  color: var(--faint);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.population-section-title:first-child {
+  margin-top: 4px;
+}
+.population-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+.population-row:hover,
+.population-row:focus-within {
+  background: rgba(255, 255, 255, 0.055);
+}
+.population-row__select {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.population-row__identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.population-row__identity strong {
+  font-size: 13px;
+  font-weight: 570;
+}
+.population-row__identity small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.favorite-button {
+  align-self: stretch;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 17px;
+  cursor: pointer;
+}
+.population-load-more {
+  width: calc(100% - 12px);
+  margin: 12px 6px 4px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.overview-number {
+  margin: 8px 0 22px;
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: -0.04em;
+}
+.overview-list {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 11px 16px;
+  margin: 0;
+}
+.overview-list dt {
+  color: var(--muted);
+}
+.overview-list dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

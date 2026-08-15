@@ -1,0 +1,3550 @@
+# CAHIER DES CHARGES — V1
+
+# Simulation de civilisation émergente préhistorique
+
+### Three.js / TypeScript / Monde procédural persistant
+
+---
+
+# 1. VISION DU PROJET
+
+Créer un jeu de simulation de vie et de civilisation entièrement systémique dans lequel une petite population humaine apparaît dans un monde sauvage, sans technologie avancée, sans connaissances artificiellement données au joueur et sans arbre technologique classique.
+
+Le joueur n'incarne pas directement un personnage.
+
+Il observe une population vivre, survivre, apprendre, échouer, transmettre ses connaissances et progressivement construire une civilisation.
+
+Les personnages doivent pouvoir :
+
+* avoir faim ;
+* avoir soif ;
+* boire de l'eau contaminée ;
+* tomber malades ;
+* s'empoisonner ;
+* être blessés ;
+* saigner ;
+* souffrir ;
+* mourir ;
+* dormir ;
+* avoir chaud ou froid ;
+* explorer ;
+* ramasser des ressources ;
+* transporter des objets ;
+* expérimenter ;
+* apprendre ;
+* oublier certaines informations ;
+* transmettre leurs connaissances ;
+* fabriquer des objets ;
+* découvrir de nouvelles techniques ;
+* construire ;
+* développer des relations ;
+* s'attacher ;
+* se méfier ;
+* se disputer ;
+* coopérer ;
+* former des groupes ;
+* communiquer ;
+* progressivement développer un vocabulaire commun ;
+* enseigner ;
+* observer les autres ;
+* développer des compétences différentes.
+
+Le monde doit pouvoir continuer à évoluer **24 heures sur 24**, même lorsqu'aucun joueur n'est connecté.
+
+Le jeu doit être construit comme une véritable simulation émergente.
+
+Il ne doit PAS fonctionner comme :
+
+> Niveau 3 atteint → découverte du feu.
+
+Il doit fonctionner comme :
+
+> Un individu connaît certaines propriétés du bois.
+> Il sait manipuler des branches.
+> Il a observé de la chaleur ou des étincelles.
+> Il expérimente plusieurs fois.
+> Certaines expériences échouent.
+> Une combinaison correcte de matériaux, conditions et gestes peut produire une braise.
+> Il doit ensuite comprendre comment maintenir cette braise.
+> Après plusieurs expériences réussies, cette connaissance devient suffisamment fiable pour être reproduite et enseignée.
+
+La philosophie générale est :
+
+**Simulation → émergence → observation → transmission → civilisation.**
+
+---
+
+# 2. DIRECTION ARTISTIQUE
+
+Le projet doit utiliser une direction artistique :
+
+* low-poly ;
+* polygon ;
+* stylized ;
+* très lisible ;
+* formes simples ;
+* personnages arrondis ;
+* proportions légèrement cartoon ;
+* environnement minimaliste mais joli ;
+* textures simples ;
+* matériaux colorés ;
+* silhouettes facilement reconnaissables.
+
+Les personnages doivent évoquer l'esprit de personnages très simples et arrondis comme ceux que l'on peut voir dans certains jeux stylisés modernes, sans reproduire exactement un personnage ou une identité visuelle existante.
+
+Pour la V1 :
+
+* tête sphérique ou légèrement déformée ;
+* torse simple ;
+* bras et jambes arrondis ;
+* mains simplifiées ;
+* animations minimalistes ;
+* couleurs permettant de distinguer les individus.
+
+Pas besoin de personnages AAA.
+
+La priorité absolue est :
+
+**lisibilité + performance + capacité d'afficher beaucoup d'individus.**
+
+---
+
+# 3. CAMÉRA
+
+Vue principale :
+
+**vue du dessus 3D légèrement inclinée.**
+
+La caméra doit permettre :
+
+* déplacement WASD ;
+* déplacement souris bord d'écran optionnel ;
+* zoom molette ;
+* rotation ;
+* déplacement rapide ;
+* zoom très éloigné ;
+* zoom proche d'un individu ;
+* centrage automatique sur un personnage sélectionné.
+
+À grande distance :
+
+* afficher principalement le monde ;
+* simplifier fortement les personnages ;
+* masquer les petits objets inutiles.
+
+À courte distance :
+
+* afficher les personnages ;
+* équipements ;
+* objets ;
+* animations ;
+* informations contextuelles.
+
+---
+
+# 4. PRINCIPE FONDAMENTAL D'ARCHITECTURE
+
+Ne PAS placer la logique principale de simulation directement dans les objets Three.js.
+
+La simulation et le rendu doivent être totalement séparés.
+
+Architecture :
+
+```text
+SIMULATION
+↓
+état logique du monde
+↓
+snapshots / événements / deltas
+↓
+CLIENT THREE.JS
+↓
+visualisation
+```
+
+Three.js ne doit jamais décider :
+
+* si quelqu'un a faim ;
+* où quelqu'un décide d'aller ;
+* si quelqu'un apprend ;
+* si une maladie progresse ;
+* si un objet est fabriqué ;
+* si quelqu'un meurt.
+
+Three.js ne fait qu'afficher les résultats.
+
+---
+
+# 5. STACK TECHNIQUE
+
+Projet entièrement TypeScript.
+
+Stack recommandée :
+
+```text
+Monorepo
+pnpm
+
+Frontend
+Vite
+TypeScript
+Three.js
+
+Backend
+Node.js
+TypeScript
+Fastify
+
+Communication
+WebSocket
+
+Simulation
+TypeScript pur
+
+Base de données
+PostgreSQL
+
+Développement local
+Docker Compose
+
+Validation
+Zod
+
+Tests
+Vitest
+
+Lint
+ESLint
+
+Formatage
+Prettier
+```
+
+Architecture :
+
+```text
+/apps
+    /client
+    /server
+
+/packages
+    /simulation
+    /shared
+    /content
+    /procedural
+    /pathfinding
+```
+
+---
+
+# 6. MONDE 24H/24
+
+Le monde ne doit PAS dépendre du navigateur.
+
+Le serveur possède le monde.
+
+Le navigateur est uniquement un observateur.
+
+Ainsi :
+
+```text
+Serveur actif
+↓
+simulation active
+↓
+personnages continuent de vivre
+↓
+joueur déconnecté
+↓
+simulation continue
+↓
+joueur revient
+↓
+client récupère le nouvel état
+```
+
+Cela permettra plus tard :
+
+* hébergement permanent ;
+* serveur personnel ;
+* mondes publics ;
+* plusieurs observateurs ;
+* historique complet d'une civilisation.
+
+Pour le développement local, le serveur pourra naturellement fonctionner sur le PC.
+
+---
+
+# 7. HORLOGE DE SIMULATION
+
+Créer une horloge indépendante du framerate graphique.
+
+Exemple :
+
+```ts
+SimulationClock
+gameTime
+deltaGameMinutes
+timeScale
+day
+season
+year
+```
+
+Le temps de jeu doit être configurable.
+
+Ne jamais hardcoder une correspondance définitive entre temps réel et temps simulé.
+
+Exemple :
+
+```ts
+TIME_SCALE = 24;
+```
+
+Le moteur doit pouvoir fonctionner :
+
+```text
+x1
+x2
+x4
+x8
+x16
+x32
+```
+
+dans les environnements de développement.
+
+Le temps persistant du serveur utilise une vitesse configurable définie pour le monde.
+
+---
+
+# 8. TICK DE SIMULATION
+
+Ne jamais exécuter toute l'intelligence de tous les personnages à chaque frame.
+
+Créer plusieurs fréquences.
+
+Exemple :
+
+### Tick rapide
+
+250 ms
+
+Pour :
+
+* mouvements ;
+* combats ;
+* actions courantes.
+
+### Tick moyen
+
+1 seconde
+
+Pour :
+
+* besoins ;
+* décisions ;
+* perception.
+
+### Tick lent
+
+5 à 30 secondes
+
+Pour :
+
+* maladies ;
+* relations ;
+* connaissances ;
+* environnement ;
+* croissance ;
+* régénération.
+
+### Tick très lent
+
+Pour :
+
+* vieillissement ;
+* saisons ;
+* modifications environnementales lentes.
+
+Le système doit être configurable.
+
+---
+
+# 9. MONDE PROCÉDURAL
+
+Chaque monde possède :
+
+```ts
+worldSeed: string
+```
+
+Une même seed doit générer le même monde initial.
+
+Le monde doit être découpé en chunks.
+
+Exemple :
+
+```text
+64 m × 64 m
+```
+
+par chunk.
+
+Ne jamais générer toute une carte gigantesque en permanence.
+
+---
+
+# 10. GÉNÉRATION DU TERRAIN
+
+La génération doit combiner plusieurs cartes procédurales :
+
+```text
+Elevation
+Moisture
+Temperature
+Fertility
+Rockiness
+VegetationDensity
+```
+
+Utiliser du bruit procédural cohérent :
+
+* Simplex ;
+* OpenSimplex ;
+* FBM ;
+* domaines déformés si nécessaire.
+
+La hauteur influence :
+
+* montagnes ;
+* collines ;
+* plaines ;
+* bassins ;
+* écoulement de l'eau.
+
+---
+
+# 11. BIOMES V1
+
+Minimum :
+
+### Prairie
+
+Ressources :
+
+* herbe ;
+* buissons ;
+* baies ;
+* quelques pierres ;
+* arbres clairsemés.
+
+### Forêt
+
+Ressources :
+
+* arbres ;
+* bois mort ;
+* fibres ;
+* champignons ;
+* baies.
+
+### Zone rocheuse
+
+Ressources :
+
+* pierres ;
+* silex ;
+* minerais futurs.
+
+### Zones humides / berges
+
+Ressources :
+
+* eau ;
+* roseaux ;
+* végétation particulière.
+
+La transition entre biomes doit être progressive.
+
+Ne pas créer des frontières parfaitement droites.
+
+---
+
+# 12. HYDROLOGIE
+
+V1 :
+
+* rivières ;
+* petits lacs ;
+* étangs ;
+* éventuellement source d'eau.
+
+Chaque source possède des propriétés.
+
+```ts
+WaterSource {
+    volume
+    contamination
+    turbidity
+    pathogenLoad
+    temperature
+}
+```
+
+Boire de l'eau ne doit pas automatiquement hydrater sans conséquence.
+
+Exemple :
+
+```text
+Eau claire visuellement
+≠
+Eau forcément potable
+```
+
+Une rivière peut être moins dangereuse qu'un étang stagnant.
+
+Un cadavre ou certaines activités proches d'une eau pourront plus tard augmenter sa contamination.
+
+---
+
+# 13. ENVIRONNEMENT
+
+Créer :
+
+```ts
+EnvironmentState
+```
+
+contenant :
+
+```text
+température
+heure
+ensoleillement
+humidité
+vent
+pluie
+saison
+```
+
+V1 peut avoir :
+
+* journée ;
+* nuit ;
+* pluie légère ;
+* température.
+
+Les systèmes complexes de météo pourront arriver plus tard.
+
+---
+
+# 14. CYCLE JOUR / NUIT
+
+Three.js doit fournir :
+
+* lumière directionnelle ;
+* lumière ambiante ;
+* ciel simple ;
+* couleurs différentes selon l'heure.
+
+La luminosité doit évoluer progressivement.
+
+Jamais de changement brutal jour → nuit.
+
+---
+
+# 15. PERSONNAGES
+
+Chaque individu est une entité complètement indépendante.
+
+```ts
+Human
+```
+
+avec un identifiant permanent.
+
+Exemple :
+
+```ts
+humanId
+birthTime
+age
+sex
+position
+velocity
+currentAction
+```
+
+Chaque individu doit pouvoir devenir différent des autres.
+
+---
+
+# 16. STATISTIQUES PHYSIOLOGIQUES
+
+Créer un système extrêmement extensible.
+
+Minimum V1 :
+
+```text
+Health
+Hydration
+Calories
+Hunger
+Fatigue
+SleepNeed
+BodyTemperature
+Pain
+BloodVolume
+ImmuneStrength
+Stress
+Morale
+Stamina
+Cleanliness
+```
+
+Éviter de simplement utiliser :
+
+```text
+health = 100
+```
+
+La santé globale doit être une conséquence de plusieurs systèmes.
+
+---
+
+# 17. MÉTABOLISME
+
+Chaque personnage consomme de l'énergie.
+
+La consommation dépend :
+
+```text
+métabolisme de base
++
+marche
++
+course
++
+travail
++
+température
++
+maladie
+```
+
+Variables :
+
+```ts
+calorieReserve
+hydrationLevel
+energyExpenditure
+```
+
+Les activités physiques doivent coûter plus d'énergie.
+
+---
+
+# 18. FAIM
+
+La faim dépend de la réserve énergétique.
+
+Effets progressifs :
+
+```text
+faim légère
+↓
+fatigue
+↓
+baisse de concentration
+↓
+baisse de force
+↓
+affaiblissement
+↓
+famine
+↓
+mort
+```
+
+Ne jamais tuer immédiatement un personnage parce qu'une barre atteint zéro.
+
+---
+
+# 19. SOIF
+
+Progression :
+
+```text
+soif
+↓
+fatigue
+↓
+difficulté de concentration
+↓
+faiblesse
+↓
+confusion
+↓
+déshydratation sévère
+↓
+mort
+```
+
+La chaleur et l'activité augmentent la consommation d'eau.
+
+---
+
+# 20. SOMMEIL
+
+Chaque personnage accumule :
+
+```ts
+sleepDebt
+```
+
+Un personnage fatigué :
+
+* réfléchit moins efficacement ;
+* travaille plus lentement ;
+* prend plus de mauvaises décisions ;
+* apprend moins vite.
+
+Un individu peut s'endormir volontairement ou s'effondrer s'il devient extrêmement fatigué.
+
+---
+
+# 21. TEMPÉRATURE CORPORELLE
+
+Ajouter :
+
+```ts
+coreTemperature
+thermalComfort
+```
+
+Influencée par :
+
+* température extérieure ;
+* pluie ;
+* vent ;
+* feu ;
+* vêtements futurs ;
+* abri ;
+* activité.
+
+Conséquences :
+
+```text
+froid
+hypothermie
+chaleur
+hyperthermie
+```
+
+---
+
+# 22. BLESSURES
+
+Ne pas utiliser simplement :
+
+```text
+damage -= hp
+```
+
+Créer des blessures.
+
+```ts
+Wound {
+    type
+    severity
+    bleeding
+    infectionRisk
+    pain
+    healingProgress
+}
+```
+
+Types V1 :
+
+```text
+coupure
+contusion
+perforation
+brûlure
+fracture simple
+```
+
+---
+
+# 23. SAIGNEMENT
+
+Une blessure peut provoquer une perte sanguine.
+
+```ts
+bloodVolume
+```
+
+Conséquences :
+
+```text
+perte faible
+↓
+fatigue
+↓
+faiblesse
+↓
+évanouissement
+↓
+mort
+```
+
+---
+
+# 24. GUÉRISON
+
+Les blessures guérissent progressivement.
+
+La vitesse dépend :
+
+* sommeil ;
+* nourriture ;
+* hydratation ;
+* gravité ;
+* infection ;
+* constitution de l'individu.
+
+---
+
+# 25. MALADIES
+
+Créer un moteur générique.
+
+```ts
+Disease {
+    id
+    incubation
+    severity
+    symptoms
+    progression
+    recoveryChance
+}
+```
+
+V1 doit comporter quelques maladies abstraites.
+
+Exemples :
+
+### Infection digestive
+
+Origine :
+
+* eau contaminée ;
+* nourriture avariée.
+
+Symptômes :
+
+* fatigue ;
+* diarrhée abstraite ;
+* perte d'eau ;
+* faiblesse ;
+* température.
+
+### Infection de plaie
+
+Origine :
+
+* blessure contaminée.
+
+### Fièvre générique
+
+Les maladies ne doivent pas être immédiatement identifiables par les personnages.
+
+---
+
+# 26. POISONS
+
+Certaines plantes ou champignons doivent pouvoir être :
+
+```text
+comestibles
+toxiques
+très toxiques
+```
+
+Les personnages ne connaissent PAS automatiquement leurs propriétés.
+
+Ils peuvent apprendre par expérience.
+
+Cela crée des situations comme :
+
+```text
+individu mange baie inconnue
+↓
+aucun problème
+↓
+association positive progressive
+```
+
+ou :
+
+```text
+individu mange champignon
+↓
+maladie
+↓
+association négative
+```
+
+Cette information doit pouvoir être transmise.
+
+---
+
+# 27. MORT
+
+Causes possibles :
+
+```text
+famine
+déshydratation
+hypothermie
+hyperthermie
+infection
+empoisonnement
+hémorragie
+blessure
+vieillesse future
+```
+
+À la mort :
+
+* le corps reste temporairement dans le monde ;
+* ses objets tombent ou restent avec lui ;
+* les proches peuvent réagir ;
+* un événement historique est généré.
+
+Exemple :
+
+```text
+"Arun est mort d'une infection après 23 jours."
+```
+
+---
+
+# 28. SYSTÈME DE PERCEPTION
+
+Les personnages ne sont PAS omniscients.
+
+Ils connaissent uniquement :
+
+* ce qu'ils voient ;
+* ce qu'ils entendent éventuellement ;
+* ce qu'ils se rappellent ;
+* ce qu'on leur transmet.
+
+Créer :
+
+```ts
+PerceptionSystem
+```
+
+avec :
+
+```text
+visionRange
+fieldOfView
+visibility
+```
+
+Un personnage situé à l'autre bout de la carte ne doit pas savoir qu'un arbre a été coupé.
+
+---
+
+# 29. MÉMOIRE
+
+Chaque individu possède sa propre mémoire.
+
+```ts
+Memory
+```
+
+Types :
+
+```text
+position d'une ressource
+position d'une eau
+personne rencontrée
+danger
+nourriture
+événement
+connaissance
+```
+
+Exemple :
+
+```text
+"J'ai vu des baies ici."
+```
+
+La mémoire possède :
+
+```text
+confidence
+age
+importance
+```
+
+Certaines informations peuvent devenir moins fiables avec le temps.
+
+---
+
+# 30. INTELLIGENCE ARTIFICIELLE
+
+L'IA doit utiliser une architecture hybride :
+
+### Utility AI
+
+Décide **quoi faire**.
+
+### Planner
+
+Décide **comment le faire**.
+
+Exemple :
+
+```text
+Hydratation critique
+↓
+utility boire = 0.97
+
+faim = 0.42
+fatigue = 0.21
+
+Décision : boire
+```
+
+Ensuite :
+
+```text
+trouver source connue
+↓
+se déplacer
+↓
+atteindre l'eau
+↓
+boire
+```
+
+---
+
+# 31. BESOINS
+
+Chaque intention possède un score.
+
+Exemple :
+
+```ts
+Drink
+Eat
+Sleep
+WarmUp
+Flee
+Heal
+Explore
+Gather
+Socialize
+Experiment
+Craft
+Build
+Teach
+```
+
+Calcul :
+
+```ts
+score = urgency
+      × personality
+      × accessibility
+      × knowledge
+      × risk
+```
+
+Un comportement ne doit jamais être choisi uniquement au hasard.
+
+---
+
+# 32. PERSONNALITÉ
+
+Chaque personnage reçoit plusieurs traits.
+
+Exemples :
+
+```text
+curiosité
+prudence
+sociabilité
+agressivité
+patience
+altruisme
+courage
+persévérance
+```
+
+Valeur :
+
+```text
+0 → 1
+```
+
+Cela doit directement influencer l'IA.
+
+Exemple :
+
+Un individu très curieux expérimente davantage.
+
+Un individu prudent évite plus facilement une nourriture inconnue.
+
+---
+
+# 33. ACTIONS
+
+Créer un système générique :
+
+```ts
+Action
+```
+
+Exemples :
+
+```text
+Move
+Observe
+Pickup
+Drop
+Eat
+Drink
+Sleep
+Gather
+Cut
+Strike
+Craft
+Build
+Talk
+Teach
+Experiment
+Rest
+WarmUp
+```
+
+Une action possède :
+
+```text
+conditions
+duration
+cost
+requirements
+result
+interruptConditions
+```
+
+---
+
+# 34. PATHFINDING
+
+Utiliser un système spatial adapté aux grandes cartes.
+
+V1 :
+
+* grille de navigation ;
+* A* ;
+* cache de chemins ;
+* recalcul limité.
+
+Ne jamais effectuer des centaines de recherches A* complètes chaque frame.
+
+Ajouter un système permettant de limiter les demandes simultanées.
+
+---
+
+# 35. CONNAISSANCES
+
+C'est l'un des systèmes les plus importants du projet.
+
+Chaque personnage possède son propre :
+
+```ts
+KnowledgeBase
+```
+
+Il n'existe PAS de technologie universellement débloquée.
+
+Exemple :
+
+```text
+Personnage A sait fabriquer une pierre tranchante.
+Personnage B ne sait pas.
+Personnage C l'a vu faire mais maîtrise mal.
+```
+
+---
+
+# 36. CONCEPTS
+
+Les connaissances doivent être décomposées en concepts.
+
+Exemple :
+
+```text
+STONE
+WOOD
+SHARP
+CUTTING
+IMPACT
+DRY_MATERIAL
+HEAT
+EMBER
+COMBUSTION
+```
+
+Un concept possède :
+
+```ts
+KnowledgeConcept {
+    confidence
+    experience
+    source
+}
+```
+
+---
+
+# 37. COMPÉTENCES
+
+Créer un système continu.
+
+Pas :
+
+```text
+niveau 1
+niveau 2
+niveau 3
+```
+
+mais :
+
+```text
+skillValue: 0 → 100
+```
+
+Compétences V1 :
+
+```text
+foraging
+woodworking
+stoneWorking
+fireMaking
+construction
+cooking
+medicine
+social
+teaching
+exploration
+combat
+```
+
+L'expérience dépend réellement de la pratique.
+
+---
+
+# 38. APPRENTISSAGE
+
+Progression :
+
+```text
+observer
+↓
+essaye
+↓
+échoue
+↓
+comprend légèrement
+↓
+réessaye
+↓
+réussit
+↓
+répète
+↓
+maîtrise
+```
+
+Une réussite unique ne signifie PAS maîtrise totale.
+
+---
+
+# 39. DÉCOUVERTE
+
+Ne jamais faire :
+
+```ts
+if (random() < 0.01)
+    unlockFire()
+```
+
+Les inventions doivent nécessiter une combinaison de facteurs.
+
+Exemple simplifié :
+
+```text
+connaissance bois
++
+matériau sec
++
+expérience friction/percussion
++
+curiosité
++
+temps disponible
++
+expérimentation
+```
+
+peut éventuellement produire :
+
+```text
+chaleur
+↓
+fumée
+↓
+braise
+```
+
+Puis l'individu doit comprendre comment :
+
+```text
+nourrir la braise
++
+protéger la braise
++
+ajouter du combustible
+```
+
+avant de maîtriser réellement le feu.
+
+---
+
+# 40. FEU
+
+La maîtrise du feu doit être un accomplissement majeur.
+
+Étapes possibles :
+
+```text
+1. connaissance matériaux secs
+2. observation chaleur
+3. expérimentation
+4. génération d'une braise
+5. maintien de la braise
+6. ajout combustible
+7. feu stable
+8. reproduction volontaire
+9. transmission
+```
+
+Il doit être tout à fait possible qu'une population passe longtemps sans réussir à fabriquer volontairement du feu.
+
+---
+
+# 41. EXPÉRIMENTATION
+
+Créer :
+
+```ts
+ExperimentSystem
+```
+
+Un personnage curieux peut expérimenter lorsqu'il :
+
+* n'est pas en danger ;
+* n'a pas de besoin critique ;
+* possède des matériaux ;
+* possède certains concepts.
+
+Les essais peuvent :
+
+```text
+échouer
+donner une observation
+produire un résultat accidentel
+créer une nouvelle hypothèse
+```
+
+Les échecs doivent être utiles.
+
+---
+
+# 42. TRANSMISSION DU SAVOIR
+
+Les individus doivent pouvoir apprendre :
+
+### par observation
+
+Ils regardent quelqu'un effectuer une action.
+
+### par imitation
+
+Ils reproduisent ce qu'ils ont observé.
+
+### par démonstration
+
+Un individu enseigne volontairement.
+
+### par communication
+
+Lorsque le langage devient suffisamment développé.
+
+L'efficacité dépend :
+
+```text
+compétence enseignant
+relation
+attention
+langage partagé
+complexité
+```
+
+---
+
+# 43. PROTO-LANGAGE
+
+La V1 doit posséder une première version crédible de langage émergent.
+
+Ne pas essayer de créer un véritable moteur linguistique humain complet.
+
+Créer un système de :
+
+```text
+Concept → Vocalisation
+```
+
+Au départ les individus peuvent utiliser :
+
+```text
+gestes
+sons
+pointage
+expressions
+```
+
+Puis certaines vocalisations peuvent être associées à certains concepts.
+
+---
+
+# 44. CRÉATION DES MOTS
+
+Lorsqu'un besoin de communication existe :
+
+```text
+individu A pointe eau
++
+produit son
+```
+
+Le système peut générer une vocalisation.
+
+Exemple :
+
+```text
+"ka"
+```
+
+Association :
+
+```text
+KA → WATER
+```
+
+Si cette association est répétée et comprise par d'autres :
+
+```text
+usage ↑
+confiance ↑
+diffusion ↑
+```
+
+Elle devient progressivement un mot partagé.
+
+---
+
+# 45. LEXIQUE INDIVIDUEL
+
+Chaque personnage possède :
+
+```ts
+Lexicon
+```
+
+Exemple :
+
+```ts
+{
+    "ka": {
+        concept: "WATER",
+        confidence: 0.82
+    }
+}
+```
+
+Deux individus peuvent utiliser des mots différents.
+
+Un groupe peut progressivement converger.
+
+---
+
+# 46. GÉNÉRATION DES VOCALISATIONS
+
+Créer un générateur de syllabes.
+
+Exemple de phonèmes :
+
+```text
+k
+m
+n
+t
+p
+r
+a
+e
+i
+o
+u
+```
+
+Formats :
+
+```text
+CV
+CVC
+VC
+CV-CV
+```
+
+Exemples générés :
+
+```text
+ka
+moru
+tan
+paki
+naro
+```
+
+La seed du monde doit permettre une génération déterministe.
+
+---
+
+# 47. RELATIONS
+
+Chaque paire d'individus peut posséder :
+
+```ts
+Relationship
+```
+
+avec :
+
+```text
+trust
+affection
+fear
+respect
+resentment
+familiarity
+```
+
+Les valeurs évoluent selon les interactions.
+
+---
+
+# 48. INTERACTIONS SOCIALES
+
+Minimum V1 :
+
+```text
+parler
+aider
+partager nourriture
+partager eau
+enseigner
+observer
+consoler
+refuser
+voler objet
+se disputer
+menacer
+```
+
+Chaque interaction modifie les relations.
+
+---
+
+# 49. RÉPUTATION
+
+Un personnage fréquemment agressif ou voleur doit progressivement être considéré différemment.
+
+Le système ne doit cependant pas être omniscient.
+
+Seuls les témoins ou les personnes informées doivent connaître certains événements.
+
+---
+
+# 50. GROUPES
+
+Des individus vivant régulièrement ensemble peuvent progressivement former un groupe.
+
+Créer :
+
+```ts
+SocialGroup
+```
+
+Variables :
+
+```text
+members
+cohesion
+sharedKnowledge
+sharedWords
+campLocation
+```
+
+Il ne faut pas immédiatement afficher :
+
+> Tribu des X.
+
+Au départ ce sont simplement des individus associés.
+
+---
+
+# 51. REPRODUCTION — VERSION SIMPLE
+
+Pour éviter qu'une civilisation disparaisse forcément après une génération, prévoir dès l'architecture V1 un système démographique.
+
+Version V1 volontairement abstraite et non graphique :
+
+* âge ;
+* sexe ;
+* fertilité ;
+* couple/relation suffisamment stable ;
+* grossesse ;
+* naissance ;
+* enfant dépendant.
+
+La simulation comportementale détaillée des enfants pourra être simplifiée initialement.
+
+Le système doit surtout être conçu de façon extensible.
+
+---
+
+# 52. OBJETS
+
+Chaque objet doit être une entité logique.
+
+```ts
+Item
+```
+
+Propriétés possibles :
+
+```text
+material
+mass
+durability
+sharpness
+hardness
+flammability
+foodValue
+waterCapacity
+```
+
+Les propriétés physiques sont importantes.
+
+Cela évitera de dépendre exclusivement de recettes codées en dur.
+
+---
+
+# 53. RESSOURCES V1
+
+Minimum :
+
+```text
+branche
+bois
+bois sec
+pierre
+silex
+pierre tranchante
+fibre
+herbe sèche
+baie
+champignon
+viande
+eau
+```
+
+Éventuellement :
+
+```text
+os
+peau
+roseau
+```
+
+---
+
+# 54. PROPRIÉTÉS DES MATÉRIAUX
+
+Créer :
+
+```ts
+MaterialDefinition
+```
+
+avec :
+
+```text
+hardness
+density
+sharpPotential
+flammability
+insulation
+flexibility
+```
+
+Exemple :
+
+Le silex doit être naturellement meilleur qu'une pierre quelconque pour produire un bord coupant.
+
+---
+
+# 55. FABRICATION
+
+Pas de menu magique de craft pour les personnages.
+
+Une fabrication est un processus.
+
+Exemple :
+
+```text
+prendre pierre A
++
+prendre pierre B
++
+frapper
++
+angle correct
++
+compétence stoneWorking
++
+chance selon technique
+```
+
+Résultat :
+
+```text
+échec
+fragment inutile
+fragment tranchant
+outil exploitable
+```
+
+---
+
+# 56. OBJETS PRIMITIFS V1
+
+Prévoir :
+
+```text
+pierre tranchante
+éclat de silex
+bâton
+lance primitive
+outil de coupe primitif
+torche
+matériau d'allumage
+feu de camp
+couchage végétal
+stockage primitif
+abri
+```
+
+Les objets plus avancés arriveront après.
+
+---
+
+# 57. DURABILITÉ
+
+Les outils s'usent.
+
+```ts
+durability
+```
+
+Un outil cassé peut :
+
+* devenir inutilisable ;
+* devenir un autre objet ;
+* produire des fragments.
+
+---
+
+# 58. NOURRITURE
+
+Chaque nourriture possède :
+
+```text
+calories
+hydration
+toxicity
+spoilage
+digestibility
+```
+
+Les aliments peuvent progressivement se dégrader.
+
+---
+
+# 59. CUISSON
+
+Une fois le feu maîtrisé :
+
+```text
+viande crue
+→
+viande cuite
+```
+
+Effets possibles :
+
+```text
+meilleure digestibilité
+risque pathogène réduit
+```
+
+Mais une nourriture brûlée doit être possible.
+
+---
+
+# 60. INVENTAIRE
+
+Chaque personnage possède une capacité limitée.
+
+Pas d'inventaire de 50 cases.
+
+Utiliser principalement :
+
+```text
+poids
+volume
+mains disponibles
+```
+
+Au départ :
+
+```text
+main gauche
+main droite
+petite capacité transport
+```
+
+Les contenants amélioreront cela plus tard.
+
+---
+
+# 61. CONSTRUCTION
+
+Créer un système de projet.
+
+```ts
+ConstructionProject
+```
+
+Exemple :
+
+```text
+abri
+```
+
+nécessite :
+
+```text
+branches
+fibres
+travail
+```
+
+Un projet possède :
+
+```text
+materialsRequired
+materialsDelivered
+workRequired
+workCompleted
+```
+
+Les personnages doivent :
+
+```text
+collecter
+↓
+transporter
+↓
+déposer
+↓
+construire
+```
+
+---
+
+# 62. CONSTRUCTIONS V1
+
+Minimum :
+
+```text
+feu de camp
+abri rudimentaire
+couchage
+zone de stockage
+```
+
+Éventuellement :
+
+```text
+petit pare-vent
+```
+
+Pas encore besoin de maisons complexes.
+
+---
+
+# 63. CAMP
+
+Un groupe qui utilise régulièrement la même zone peut développer un camp.
+
+Le camp n'est pas posé artificiellement par le jeu.
+
+Il émerge parce que :
+
+```text
+plusieurs individus dorment ici
++
+stockent ici
++
+font du feu ici
++
+reviennent régulièrement
+```
+
+Le système peut ensuite considérer cette zone comme :
+
+```ts
+Camp
+```
+
+---
+
+# 64. EXPLORATION
+
+Chaque personnage possède une connaissance spatiale différente.
+
+Zones possibles :
+
+```text
+inconnue
+aperçue
+explorée
+connue
+```
+
+Un individu peut partir explorer lorsqu'il :
+
+* n'a pas de besoin critique ;
+* possède suffisamment d'énergie ;
+* est curieux ;
+* cherche une ressource.
+
+---
+
+# 65. CARTE MENTALE
+
+Créer une carte mentale logique par individu.
+
+Ne pas stocker chaque pixel.
+
+Stocker des points importants :
+
+```text
+eau connue
+zone nourriture
+zone pierre
+danger
+camp
+cadavre
+```
+
+---
+
+# 66. ANIMAUX
+
+Préparer l'architecture ECS pour les animaux.
+
+Pour la V1 finale, ajouter au minimum quelques animaux simples si possible :
+
+```text
+petits animaux
+herbivore
+prédateur simple
+```
+
+Mais la simulation humaine est prioritaire.
+
+Si cette partie compromet la stabilité de la V1, les animaux avancés doivent être repoussés après la V1.
+
+---
+
+# 67. COMBAT
+
+Combat volontairement simple pour la V1.
+
+Actions :
+
+```text
+frapper
+repousser
+fuir
+attaquer avec bâton
+attaquer avec pierre
+attaquer avec lance
+```
+
+Les dégâts doivent produire des blessures.
+
+Le combat n'est pas basé uniquement sur une barre de vie.
+
+---
+
+# 68. PRIORITÉS DE SURVIE
+
+Un personnage doit pouvoir abandonner une action.
+
+Exemple :
+
+```text
+construction
+↓
+soif critique
+↓
+interruption
+↓
+cherche de l'eau
+```
+
+Ou :
+
+```text
+expérience
+↓
+prédateur
+↓
+fuite
+```
+
+Créer des niveaux d'interruption.
+
+---
+
+# 69. ÉVÉNEMENTS HISTORIQUES
+
+Créer :
+
+```ts
+WorldEvent
+```
+
+Exemples :
+
+```text
+naissance
+mort
+premier feu
+premier outil
+nouveau mot
+nouvelle construction
+formation d'un groupe
+découverte importante
+```
+
+Chaque événement possède :
+
+```text
+timestamp
+location
+participants
+importance
+```
+
+---
+
+# 70. CHRONIQUE DU MONDE
+
+L'interface doit permettre d'afficher :
+
+```text
+Jour 3 — premier feu observé
+Jour 5 — Mara découvre un éclat de pierre tranchant
+Jour 7 — premier abri terminé
+Jour 11 — Oru meurt après avoir bu de l'eau contaminée
+Jour 18 — le mot "ka" commence à être utilisé pour l'eau
+```
+
+Ce journal est extrêmement important pour comprendre la simulation.
+
+---
+
+# 71. INTERFACE PRINCIPALE
+
+UI minimaliste.
+
+Écran principal :
+
+```text
+Monde
+```
+
+Barre supérieure :
+
+```text
+date
+heure
+population
+vitesse
+pause
+```
+
+---
+
+# 72. SÉLECTION D'UN PERSONNAGE
+
+Cliquer sur un individu ouvre un panneau.
+
+Afficher :
+
+```text
+nom / identifiant
+âge
+état
+activité actuelle
+faim
+soif
+fatigue
+température
+santé
+douleur
+maladies
+blessures
+personnalité
+compétences
+connaissances
+relations
+inventaire
+mémoire récente
+```
+
+---
+
+# 73. PANNEAU DE PENSÉE
+
+Très important pour le debug et pour rendre la simulation intéressante.
+
+Exemple :
+
+```text
+Besoin dominant :
+Soif 92%
+
+Décision :
+Chercher de l'eau.
+
+Mémoire :
+Source d'eau connue à 138 m.
+
+Risque estimé :
+Faible.
+
+Action :
+Se déplacer vers la rivière.
+```
+
+Cela permettra de comprendre pourquoi l'IA effectue chaque action.
+
+---
+
+# 74. PANNEAU CONNAISSANCES
+
+Pour un personnage :
+
+```text
+Pierre : 91%
+Bois : 78%
+Coupe : 34%
+Feu : 3%
+Baie rouge comestible : 62%
+Champignon brun dangereux : 81%
+```
+
+---
+
+# 75. PANNEAU LANGAGE
+
+Afficher :
+
+```text
+Mot
+Concept
+Confiance
+Nombre d'utilisateurs
+```
+
+Exemple :
+
+```text
+ka → eau → 84% → 6 individus
+moro → feu → 52% → 3 individus
+```
+
+---
+
+# 76. PANNEAU POPULATION
+
+Afficher :
+
+```text
+population totale
+vivants
+naissances
+morts
+âge moyen
+groupes
+```
+
+---
+
+# 77. MODE DEBUG
+
+Indispensable.
+
+Touche :
+
+```text
+F3
+```
+
+Afficher :
+
+```text
+FPS
+draw calls
+triangles
+agents actifs
+ticks simulation
+temps tick
+chunks actifs
+path requests
+mémoire JS
+```
+
+Overlays :
+
+```text
+navigation
+chunks
+biomes
+température
+hydrologie
+positions agents
+intentions IA
+```
+
+---
+
+# 78. RENDU THREE.JS
+
+Utiliser :
+
+```text
+WebGLRenderer
+```
+
+Configurer correctement :
+
+```text
+pixelRatio plafonné
+shadow maps limitées
+frustum culling
+instancing
+LOD
+```
+
+---
+
+# 79. INSTANCING
+
+Tous les objets répétés doivent autant que possible utiliser :
+
+```ts
+THREE.InstancedMesh
+```
+
+Exemples :
+
+```text
+arbres
+pierres
+herbe
+buissons
+petites ressources
+```
+
+Ne jamais créer 5 000 Mesh indépendants lorsqu'un InstancedMesh peut suffire.
+
+---
+
+# 80. LOD
+
+Créer plusieurs niveaux.
+
+### LOD 0
+
+Proche :
+
+* personnage complet ;
+* animation.
+
+### LOD 1
+
+Distance moyenne :
+
+* géométrie simplifiée.
+
+### LOD 2
+
+Distance élevée :
+
+* silhouette extrêmement simple.
+
+---
+
+# 81. ANIMATION DES PERSONNAGES
+
+V1 :
+
+```text
+idle
+walk
+run
+pickup
+work
+sleep
+eat
+drink
+attack
+```
+
+Les animations peuvent être procédurales simples.
+
+Pas besoin de système Blender complexe au départ.
+
+---
+
+# 82. IDENTITÉ VISUELLE DES PERSONNAGES
+
+Attribuer légèrement différents :
+
+```text
+taille
+proportions
+couleur peau
+couleur cheveux éventuelle
+forme tête
+```
+
+Sans créer des dizaines de modèles.
+
+Utiliser des paramètres procéduraux.
+
+---
+
+# 83. OPTIMISATION SIMULATION
+
+Créer une spatial hash/grid.
+
+Exemple :
+
+```ts
+SpatialIndex
+```
+
+permettant de rechercher :
+
+```text
+ressources proches
+personnes proches
+objets proches
+```
+
+Ne jamais faire :
+
+```ts
+for each human
+    for each object
+```
+
+---
+
+# 84. NIVEAUX DE SIMULATION
+
+Prévoir plusieurs fréquences selon importance.
+
+Exemple :
+
+### Agent actif
+
+Décision fréquente.
+
+### Agent éloigné
+
+Décision moins fréquente.
+
+### Agent endormi
+
+Simulation fortement simplifiée.
+
+### Système environnemental lent
+
+Tick très espacé.
+
+---
+
+# 85. OBJECTIF DE PERFORMANCE V1
+
+Machine PC moyenne :
+
+### Affichage
+
+Objectif :
+
+```text
+60 FPS
+```
+
+avec environ :
+
+```text
+100 personnages visibles
+plusieurs milliers d'éléments environnementaux instanciés
+```
+
+### Simulation
+
+Objectif minimum :
+
+```text
+100 personnages
+```
+
+sans ralentissement majeur.
+
+Stress test :
+
+```text
+250 personnages
+```
+
+Même si le rendu est simplifié.
+
+L'architecture doit pouvoir évoluer vers davantage.
+
+---
+
+# 86. RÉSEAU
+
+Communication serveur/client via WebSocket.
+
+Ne pas transférer l'intégralité du monde chaque frame.
+
+Utiliser :
+
+```text
+snapshot initial
++
+deltas
++
+événements
+```
+
+Exemple :
+
+```text
+agentPositionChanged
+itemCreated
+structureCompleted
+agentDied
+knowledgeDiscovered
+```
+
+---
+
+# 87. INTÉRÊT SPATIAL DU CLIENT
+
+Le serveur doit pouvoir envoyer prioritairement les informations proches de la caméra.
+
+Concept :
+
+```ts
+interestArea
+```
+
+Les éléments très éloignés n'ont pas besoin d'être synchronisés visuellement à fréquence élevée.
+
+---
+
+# 88. SAUVEGARDE
+
+Le monde doit sauvegarder :
+
+```text
+seed
+heure
+environnement
+personnages
+relations
+blessures
+maladies
+compétences
+connaissances
+lexiques
+groupes
+objets
+structures
+ressources importantes
+événements
+```
+
+---
+
+# 89. SNAPSHOTS
+
+Créer automatiquement un snapshot périodique.
+
+Exemple configurable :
+
+```text
+toutes les 5 minutes réelles
+```
+
+Et lors de :
+
+```text
+arrêt serveur
+commande admin
+```
+
+---
+
+# 90. REPRISE APRÈS CRASH
+
+La simulation doit pouvoir :
+
+```text
+charger dernier snapshot
++
+rejouer journal d'événements nécessaire
+```
+
+V1 peut utiliser un système simplifié, mais l'architecture doit prévoir la récupération.
+
+---
+
+# 91. DÉTERMINISME
+
+Créer un générateur pseudo-aléatoire basé sur la seed.
+
+Éviter les appels directs dispersés à :
+
+```ts
+Math.random()
+```
+
+Utiliser :
+
+```ts
+WorldRng
+```
+
+ou des streams déterministes.
+
+Cela facilitera énormément les tests.
+
+---
+
+# 92. ORGANISATION DU CODE
+
+Exemple :
+
+```text
+packages/simulation/src/
+
+core/
+    Simulation.ts
+    SimulationClock.ts
+    EntityManager.ts
+    EventBus.ts
+
+humans/
+    Human.ts
+    HumanFactory.ts
+
+needs/
+    HungerSystem.ts
+    ThirstSystem.ts
+    SleepSystem.ts
+    TemperatureSystem.ts
+
+health/
+    HealthSystem.ts
+    InjurySystem.ts
+    DiseaseSystem.ts
+    PoisonSystem.ts
+
+ai/
+    UtilityAI.ts
+    ActionPlanner.ts
+    ActionExecutor.ts
+
+actions/
+    MoveAction.ts
+    DrinkAction.ts
+    EatAction.ts
+    SleepAction.ts
+    GatherAction.ts
+
+knowledge/
+    KnowledgeSystem.ts
+    DiscoverySystem.ts
+    ExperimentSystem.ts
+    TeachingSystem.ts
+
+language/
+    LanguageSystem.ts
+    Lexicon.ts
+    WordGenerator.ts
+
+social/
+    RelationshipSystem.ts
+    GroupSystem.ts
+
+skills/
+    SkillSystem.ts
+
+world/
+    World.ts
+    Chunk.ts
+
+resources/
+    ResourceSystem.ts
+
+crafting/
+    CraftSystem.ts
+
+construction/
+    ConstructionSystem.ts
+
+events/
+    WorldEventSystem.ts
+```
+
+---
+
+# 93. RÈGLES DE CODE POUR OPUS
+
+Obligatoires :
+
+```text
+TypeScript strict
+aucun any sauf justification exceptionnelle
+petits modules
+responsabilités séparées
+code documenté
+pas de fichier monolithique de plusieurs milliers de lignes
+pas de logique métier dans Three.js
+pas de valeurs magiques dispersées
+```
+
+Toutes les valeurs importantes doivent venir de configurations.
+
+Exemple :
+
+```ts
+HumanConfig
+DiseaseConfig
+MaterialConfig
+WorldConfig
+SimulationConfig
+```
+
+---
+
+# 94. CONTENU DATA-DRIVEN
+
+Les ressources, objets, maladies et actions doivent autant que possible être définissables par données.
+
+Exemple :
+
+```ts
+const BERRY_RED = {
+    id: "berry_red",
+    calories: 45,
+    hydration: 4,
+    toxicity: 0
+};
+```
+
+Éviter :
+
+```ts
+if(item === "berry_red") ...
+```
+
+dans toute la base de code.
+
+---
+
+# 95. SYSTÈME D'ÉVÉNEMENTS
+
+Créer un EventBus central.
+
+Exemples :
+
+```text
+HumanBorn
+HumanDied
+ItemCrafted
+KnowledgeLearned
+WordCreated
+FireStarted
+DiseaseContracted
+RelationshipChanged
+StructureCompleted
+```
+
+Les systèmes doivent communiquer autant que possible par événements plutôt qu'être complètement interdépendants.
+
+---
+
+# 96. OBSERVABILITÉ
+
+Chaque décision importante doit pouvoir être expliquée.
+
+Ajouter des logs structurés en mode développement.
+
+Exemple :
+
+```text
+[AI]
+human=27
+intent=Drink
+score=0.94
+target=river_14
+```
+
+---
+
+# 97. TESTS AUTOMATIQUES
+
+Créer des tests pour :
+
+```text
+faim
+soif
+maladie
+blessure
+apprentissage
+relations
+fabrication
+temps
+génération monde
+sauvegarde
+```
+
+---
+
+# 98. TEST IMPORTANT : AUCUNE CONNAISSANCE MAGIQUE
+
+Test automatique :
+
+Un personnage ne possédant aucune connaissance liée au feu ne doit jamais pouvoir appeler directement :
+
+```text
+CraftFire
+```
+
+Le système doit refuser l'action.
+
+---
+
+# 99. TEST DE TRANSMISSION
+
+Scénario :
+
+```text
+A maîtrise une technique
+B ne la connaît pas
+B observe A
+B obtient une connaissance partielle
+B s'entraîne
+B améliore progressivement son niveau
+```
+
+---
+
+# 100. TEST LONGUE DURÉE
+
+Créer :
+
+```text
+headlessSimulationTest
+```
+
+Permettant de simuler des milliers de ticks sans Three.js.
+
+Objectif :
+
+```text
+aucun crash
+aucun NaN
+aucune position invalide
+aucun inventaire négatif
+aucune duplication involontaire
+```
+
+---
+
+# 101. SIMULATION HEADLESS
+
+Commande :
+
+```bash
+pnpm sim:run
+```
+
+Exemple :
+
+```bash
+pnpm sim:run --days 100 --population 40
+```
+
+Le programme doit produire :
+
+```text
+population départ
+population fin
+morts
+découvertes
+objets fabriqués
+groupes
+maladies
+temps CPU
+```
+
+Cette fonctionnalité est extrêmement importante.
+
+---
+
+# 102. SEED DE DEBUG
+
+Prévoir :
+
+```text
+DEBUG_WORLD_001
+```
+
+qui génère toujours le même monde.
+
+Cela permet de reproduire les bugs.
+
+---
+
+# 103. POPULATION INITIALE V1
+
+Configuration recommandée :
+
+```text
+12 à 20 individus
+```
+
+avec :
+
+* personnalités aléatoires ;
+* statistiques légèrement différentes ;
+* aucune civilisation ;
+* aucun bâtiment ;
+* aucun outil avancé.
+
+Ils commencent avec uniquement les comportements humains élémentaires nécessaires à leur survie.
+
+---
+
+# 104. CONNAISSANCES INITIALES
+
+Ils peuvent naturellement connaître :
+
+```text
+marcher
+saisir
+manger
+boire
+observer
+imiter grossièrement
+chercher un abri naturel
+communiquer par gestes/sons
+```
+
+Ils ne doivent PAS automatiquement savoir :
+
+```text
+fabriquer feu
+fabriquer lance
+construire maison
+tailler silex correctement
+cuire viande
+purifier eau
+```
+
+---
+
+# 105. ÉQUILIBRE ENTRE RÉALISME ET JOUABILITÉ
+
+Le projet recherche la crédibilité et non une reproduction parfaite de l'anthropologie réelle.
+
+Lorsqu'une mécanique extrêmement réaliste rend la simulation impossible ou trop coûteuse :
+
+1. conserver la logique causale ;
+2. simplifier les calculs ;
+3. cacher cette simplification derrière des systèmes cohérents.
+
+Le joueur doit avoir l'impression que :
+
+> cela aurait réellement pu arriver.
+
+---
+
+# 106. PAS D'ARBRE TECHNOLOGIQUE CLASSIQUE
+
+INTERDIT :
+
+```text
+5 bois
++
+niveau 2
+=
+débloque feu
+```
+
+À la place :
+
+```text
+expérience
++
+concepts
++
+matériaux
++
+environnement
++
+tentatives
++
+transmission
+=
+nouvelle connaissance
+```
+
+---
+
+# 107. PAS D'OMNISCIENCE COLLECTIVE
+
+INTERDIT :
+
+```text
+un personnage découvre quelque chose
+→
+toute la population sait le faire
+```
+
+Chaque connaissance doit voyager.
+
+Cela permet :
+
+* pertes de savoir ;
+* groupes culturellement différents ;
+* techniques concurrentes ;
+* vocabulaire différent.
+
+---
+
+# 108. PERTE DE SAVOIR
+
+Si le seul individu connaissant parfaitement une technique meurt avant de l'enseigner :
+
+**la technique peut disparaître.**
+
+C'est une mécanique fondamentale.
+
+---
+
+# 109. PREMIERS OBJECTIFS ÉMERGENTS
+
+La simulation doit rendre naturellement possibles des histoires comme :
+
+```text
+Une population trouve une rivière.
+
+Plusieurs individus boivent.
+
+Deux tombent malades.
+
+Un individu commence à éviter cette eau.
+
+Il transmet progressivement cette méfiance.
+
+Un autre groupe continue à boire.
+
+Plus tard, un individu découvre le feu.
+
+La viande commence à être cuite.
+
+Des individus utilisent régulièrement le même lieu.
+
+Un camp apparaît.
+
+Des mots commencent à être utilisés.
+
+Une personne particulièrement douée pour tailler la pierre enseigne aux autres.
+
+Puis cette personne meurt.
+
+Certains individus conservent la technique.
+
+D'autres l'oublient.
+```
+
+C'est exactement ce type d'histoire que le moteur doit être capable de produire sans script prédéfini.
+
+---
+
+# 110. PHASES DE DÉVELOPPEMENT
+
+## PHASE 1 — Fondations
+
+Créer :
+
+```text
+monorepo
+client
+serveur
+simulation
+shared
+Three.js
+WebSocket
+horloge
+seed
+```
+
+Objectif :
+
+Afficher un terrain avec quelques personnages synchronisés avec le serveur.
+
+---
+
+## PHASE 2 — Monde procédural
+
+Créer :
+
+```text
+chunks
+élévation
+biomes
+arbres
+pierres
+eau
+ressources
+```
+
+Objectif :
+
+Une seed produit toujours le même monde.
+
+---
+
+## PHASE 3 — Personnages
+
+Créer :
+
+```text
+entités
+déplacement
+perception
+inventaire
+statistiques
+```
+
+---
+
+## PHASE 4 — Besoins
+
+Créer :
+
+```text
+faim
+soif
+sommeil
+température
+énergie
+```
+
+Les personnages doivent pouvoir mourir s'ils ne répondent pas correctement à leurs besoins.
+
+---
+
+## PHASE 5 — Utility AI
+
+Créer :
+
+```text
+intentions
+scores
+actions
+interruptions
+planner
+```
+
+Premier objectif :
+
+Un personnage doit pouvoir de façon autonome :
+
+```text
+avoir soif
+↓
+chercher une source connue
+↓
+se déplacer
+↓
+boire
+```
+
+---
+
+## PHASE 6 — Mémoire
+
+Créer :
+
+```text
+perception
+mémoire spatiale
+ressources connues
+danger
+```
+
+Un individu doit pouvoir retourner vers un endroit qu'il connaît.
+
+---
+
+## PHASE 7 — Santé
+
+Créer :
+
+```text
+blessures
+saignement
+maladies
+poisons
+guérison
+```
+
+---
+
+## PHASE 8 — Ressources / objets
+
+Créer :
+
+```text
+bois
+pierre
+nourriture
+fibres
+transport
+durabilité
+```
+
+---
+
+## PHASE 9 — Compétences
+
+Créer :
+
+```text
+learning-by-doing
+skills
+performance
+```
+
+---
+
+## PHASE 10 — Savoir et expérimentation
+
+Créer :
+
+```text
+concepts
+observations
+hypothèses
+expérimentation
+découverte
+```
+
+C'est l'étape la plus importante.
+
+Ne pas la bâcler.
+
+---
+
+## PHASE 11 — Craft systémique
+
+Créer :
+
+```text
+pierre tranchante
+outils primitifs
+feu
+```
+
+---
+
+## PHASE 12 — Social
+
+Créer :
+
+```text
+relations
+interactions
+aide
+partage
+enseignement
+conflits
+```
+
+---
+
+## PHASE 13 — Langage
+
+Créer :
+
+```text
+concepts
+vocalisations
+lexique individuel
+diffusion
+compréhension
+```
+
+---
+
+## PHASE 14 — Construction
+
+Créer :
+
+```text
+feu de camp
+abri
+couchage
+stockage
+camp émergent
+```
+
+---
+
+## PHASE 15 — Persistance
+
+Créer :
+
+```text
+PostgreSQL
+snapshots
+restauration
+événements
+```
+
+---
+
+## PHASE 16 — UI complète
+
+Créer :
+
+```text
+fiche personnage
+stats
+pensées
+compétences
+connaissances
+relations
+langage
+chronique
+```
+
+---
+
+## PHASE 17 — Optimisation
+
+Mesurer réellement avant d'optimiser.
+
+Ajouter :
+
+```text
+InstancedMesh
+LOD
+spatial hash
+tick scheduling
+network interest management
+object pooling si utile
+```
+
+---
+
+## PHASE 18 — Stress tests
+
+Simuler :
+
+```text
+50
+100
+250
+```
+
+agents.
+
+Analyser :
+
+```text
+CPU
+mémoire
+simulation tick
+pathfinding
+WebSocket
+FPS
+```
+
+---
+
+# 111. DEFINITION OF DONE — V1
+
+La V1 est considérée terminée lorsque l'on peut :
+
+1. créer un nouveau monde à partir d'une seed ;
+
+2. générer automatiquement une carte cohérente contenant terrain, eau, arbres, pierres et nourriture ;
+
+3. faire apparaître une petite population ;
+
+4. observer les individus vivre sans intervention du joueur ;
+
+5. voir chaque individu posséder ses propres besoins ;
+
+6. voir les personnages chercher nourriture et eau ;
+
+7. voir un individu boire de l'eau contaminée et éventuellement tomber malade ;
+
+8. voir apparaître blessures, maladie, guérison et décès ;
+
+9. voir les individus posséder leur propre mémoire ;
+
+10. constater qu'ils ne connaissent pas les ressources qu'ils n'ont jamais observées ;
+
+11. voir leurs compétences progresser par la pratique ;
+
+12. voir des connaissances différentes entre individus ;
+
+13. voir un individu apprendre quelque chose en observant un autre ;
+
+14. voir une connaissance se transmettre ;
+
+15. voir une connaissance disparaître si tous ceux qui la connaissent meurent ;
+
+16. voir des expérimentations produire succès et échecs ;
+
+17. permettre une découverte émergente de techniques primitives ;
+
+18. permettre la maîtrise progressive du feu sans bouton de déblocage ;
+
+19. voir apparaître des relations sociales ;
+
+20. voir des individus partager, aider ou se disputer ;
+
+21. voir apparaître un vocabulaire primitif ;
+
+22. voir certains mots progressivement partagés par plusieurs personnes ;
+
+23. permettre la fabrication d'objets primitifs ;
+
+24. permettre la construction d'un camp rudimentaire ;
+
+25. conserver le monde dans une base de données ;
+
+26. arrêter et redémarrer le serveur sans perdre la civilisation ;
+
+27. laisser le serveur faire évoluer le monde sans client Three.js connecté ;
+
+28. observer le monde depuis une caméra Three.js fluide ;
+
+29. sélectionner n'importe quel individu et comprendre son état et sa décision actuelle ;
+
+30. exécuter plusieurs dizaines ou centaines de jours en simulation headless pour tester l'équilibrage.
+
+---
+
+# 112. HORS SCOPE V1
+
+Ne PAS perdre plusieurs semaines dès maintenant sur :
+
+```text
+graphismes AAA
+villes gigantesques
+guerres entre royaumes
+agriculture extrêmement avancée
+métallurgie
+navigation maritime
+religions complexes
+économie avancée
+politique avancée
+écriture
+commerce international
+chevaux
+véhicules
+armes avancées
+milliers d'animaux
+génétique ultra détaillée
+véritable intelligence linguistique complète
+```
+
+L'architecture doit permettre ces évolutions, mais elles arriveront dans les versions suivantes.
+
+---
+
+# 113. OBJECTIF À LONG TERME
+
+L'architecture V1 doit pouvoir évoluer progressivement vers :
+
+```text
+Préhistoire
+↓
+tribus
+↓
+villages
+↓
+agriculture
+↓
+élevage
+↓
+métallurgie
+↓
+commerce
+↓
+guerres
+↓
+politique
+↓
+religions
+↓
+écriture
+↓
+villes
+↓
+royaumes
+↓
+civilisations
+```
+
+sans devoir réécrire complètement le moteur.
+
+---
+
+# 114. RÈGLE ABSOLUE DU PROJET
+
+Avant de développer une nouvelle fonctionnalité, toujours se demander :
+
+> « Le personnage fait-il cela parce que la simulation lui donne réellement une raison de le faire, ou simplement parce que le développeur lui a dit de le faire ? »
+
+Si la réponse est :
+
+> « Parce que le développeur lui a dit de le faire. »
+
+alors rechercher une solution plus systémique.
+
+---
+
+# 115. INSTRUCTION FINALE POUR CLAUDE OPUS
+
+Tu dois construire ce projet comme un moteur de simulation extensible et non comme une succession de scripts.
+
+Priorités absolues :
+
+```text
+1. architecture
+2. déterminisme
+3. séparation simulation/rendu
+4. autonomie des individus
+5. connaissances individuelles
+6. comportements causaux
+7. émergence
+8. performances
+9. observabilité
+10. graphismes
+```
+
+Ne jamais sacrifier l'architecture de la simulation pour obtenir rapidement une démonstration visuelle.
+
+Commencer par une version extrêmement simple graphiquement mais possédant une base simulation propre.
+
+Chaque système doit pouvoir être testé sans Three.js.
+
+La commande de simulation headless doit rester fonctionnelle pendant tout le développement.
+
+À la fin de chaque phase :
+
+```text
+compiler
+lancer les tests
+lancer simulation headless
+vérifier erreurs runtime
+vérifier performances
+documenter les changements
+```
+
+Ne pas commencer plusieurs systèmes incomplets simultanément.
+
+Terminer et tester chaque fondation avant de construire la suivante.
+
+L'objectif de cette V1 n'est pas encore d'avoir une civilisation moderne.
+
+L'objectif est d'obtenir **un petit groupe d'humains virtuels suffisamment autonomes pour que l'on puisse les observer et voir apparaître des comportements et des histoires que nous n'avons pas explicitement scriptés.**
+
+C'est cette architecture qui permettra ensuite au projet de devenir une simulation extrêmement profonde.

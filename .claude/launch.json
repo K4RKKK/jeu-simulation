@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "civ-server",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev:server"],
+      "port": 8787
+    },
+    {
+      "name": "civ-client",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev:client"],
+      "port": 5173
+    }
+  ]
+}

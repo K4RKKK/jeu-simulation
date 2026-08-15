@@ -1,0 +1,45 @@
+{
+  "name": "civ-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" run dev",
+    "dev:server": "pnpm --filter @civ/server run dev",
+    "dev:client": "pnpm --filter @civ/client run dev",
+    "sim:run": "tsx packages/simulation/src/cli/run.ts",
+    "worldgen:test": "tsx packages/procedural/src/cli/worldgen.ts",
+    "worldgen:analyze": "tsx packages/procedural/src/cli/worldgen.ts --seeds 20 --chunks 24",
+    "stress:worldgen": "tsx packages/simulation/src/stress/worldgen.ts",
+    "stress:pathfinding": "tsx packages/simulation/src/stress/pathfinding.ts",
+    "stress:chunks": "tsx apps/server/src/stress/chunks.ts",
+    "stress:persistence": "tsx packages/simulation/src/stress/persistence.ts",
+    "stress:simulation": "tsx packages/simulation/src/stress/simulation.ts",
+    "stress:benchmark": "tsx packages/simulation/src/stress/benchmark.ts",
+    "build": "pnpm run typecheck && pnpm --filter @civ/server run build && pnpm --filter @civ/client run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm run test:unit && pnpm run test:performance",
+    "test:unit": "vitest run --exclude packages/procedural/src/worldGeneration.test.ts",
+    "test:performance": "vitest run packages/procedural/src/worldGeneration.test.ts",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.0",
+    "vitest": "^2.1.8"
+  }
+}

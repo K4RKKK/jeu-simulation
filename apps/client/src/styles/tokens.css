@@ -1,0 +1,25 @@
+:root {
+  color-scheme: dark;
+  --glass: rgba(15, 18, 21, 0.76);
+  --glass-strong: rgba(13, 16, 19, 0.9);
+  --line: rgba(245, 241, 232, 0.1);
+  --line-strong: rgba(245, 241, 232, 0.18);
+  --text: #f1efe9;
+  --muted: #9d9f9c;
+  --faint: #707571;
+  --accent: #d4b780;
+  --positive: #9eb898;
+  --warning: #d2b27b;
+  --danger: #c98278;
+  font-family:
+    Inter,
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}

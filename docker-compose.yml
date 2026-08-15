@@ -1,0 +1,24 @@
+# PostgreSQL is provisioned ahead of time so the persistence layer (phase "save/load")
+# has a target, but nothing in the current codebase requires it: the simulation runs
+# fully in memory. Starting this stack is optional today.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: civ-sim-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-civ}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-civ}
+      POSTGRES_DB: ${POSTGRES_DB:-civ_sim}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - civ-sim-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-civ} -d ${POSTGRES_DB:-civ_sim}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  civ-sim-pgdata:

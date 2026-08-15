@@ -1,0 +1,71 @@
+.topbar {
+  position: fixed;
+  z-index: 20;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(780px, calc(100vw - 150px));
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding: 5px 8px 5px 18px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(14, 17, 19, 0.68);
+  box-shadow: 0 8px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px) saturate(115%);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.topbar__world {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  color: #c5c7c3;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.topbar__primary {
+  color: var(--text);
+  font-weight: 620;
+  letter-spacing: 0.01em;
+}
+.topbar__separator {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.speed-control button {
+  min-width: 34px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: 130ms ease;
+}
+.speed-control button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
+.speed-control button.is-active {
+  color: #191714;
+  background: var(--accent);
+  font-weight: 700;
+}
+.speed-control .icon-button {
+  min-width: 32px;
+  color: #d9d6ce;
+}

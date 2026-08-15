@@ -1,0 +1,316 @@
+.worlds-screen {
+  position: fixed;
+  z-index: 210;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #1b2118 0%, #0c0f0a 100%);
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 220ms;
+}
+.worlds-screen.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.worlds-card {
+  width: min(420px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 28px 30px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--glass-strong);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+.worlds-card h1 {
+  margin: 0 0 20px;
+  font-size: 13px;
+  font-weight: 620;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+
+.worlds-primary-button {
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--accent);
+  color: #191714;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 130ms ease;
+}
+.worlds-primary-button:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- Mes mondes ------------------------------------------------------ */
+
+.world-continue-card {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: rgba(212, 183, 128, 0.1);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 130ms ease;
+}
+.world-continue-card:hover {
+  background: rgba(212, 183, 128, 0.16);
+}
+.world-continue-card__thumb {
+  flex: 0 0 84px;
+  width: 84px;
+  border-radius: 9px;
+  background-color: rgba(255, 255, 255, 0.05);
+  background-size: cover;
+  background-position: center;
+}
+.world-continue-card__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+.world-continue-card__label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.world-continue-card strong {
+  font-size: 16px;
+}
+.world-continue-card__meta {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.world-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.world-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: background 130ms ease;
+}
+.world-row:hover {
+  background: rgba(255, 255, 255, 0.055);
+}
+.world-row.is-active {
+  outline: 1px solid rgba(212, 183, 128, 0.35);
+}
+
+.world-row__main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.world-row__thumb {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 40px;
+  border-radius: 7px;
+  background-color: rgba(255, 255, 255, 0.05);
+  background-size: cover;
+  background-position: center;
+}
+.world-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.world-row__name {
+  font-size: 13px;
+  font-weight: 560;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.world-row__name em {
+  color: var(--positive);
+  font-style: normal;
+  font-size: 10.5px;
+}
+.world-row__meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.world-row__menu-toggle {
+  width: 34px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.world-row__menu-toggle:hover {
+  color: var(--text);
+}
+
+.world-row__menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  right: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--glass-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+.world-row__menu button {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.world-row__menu button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+.world-row__menu button:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+.world-row__menu-danger {
+  color: var(--danger) !important;
+}
+
+/* ---- Nouveau monde ----------------------------------------------------- */
+
+.worlds-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.worlds-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.worlds-field input {
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.worlds-field input:focus {
+  outline: 1px solid var(--accent);
+}
+
+.worlds-seed-row {
+  display: flex;
+  gap: 8px;
+}
+.worlds-seed-row input {
+  flex: 1;
+}
+.worlds-seed-row button {
+  width: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.worlds-fieldset {
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.worlds-fieldset legend {
+  width: 100%;
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.worlds-fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.worlds-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(201, 130, 120, 0.16);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.worlds-actions {
+  display: flex;
+  gap: 10px;
+}
+.worlds-actions [data-back] {
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.worlds-actions .worlds-primary-button {
+  flex: 1;
+}

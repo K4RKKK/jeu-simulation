@@ -1,0 +1,143 @@
+.loading-screen {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #1b2118 0%, #0c0f0a 100%);
+  transition:
+    opacity 320ms ease,
+    visibility 0s linear 320ms;
+}
+.loading-screen.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.loading-card {
+  width: min(340px, calc(100vw - 48px));
+  padding: 26px 28px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--glass-strong);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+.loading-card h1 {
+  margin: 0 0 18px;
+  font-size: 13px;
+  font-weight: 620;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+
+.loading-steps {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.loading-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--faint);
+  font-size: 12.5px;
+  transition: color 150ms ease;
+}
+.loading-steps li.is-done {
+  color: var(--text);
+}
+.loading-check {
+  width: 16px;
+  text-align: center;
+  color: var(--positive);
+  font-weight: 700;
+}
+.loading-steps li:not(.is-done) .loading-check {
+  color: var(--faint);
+}
+
+.loading-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.loading-progress__track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.loading-progress__bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 280ms ease;
+}
+.loading-progress__percent {
+  min-width: 34px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.reconnect-overlay {
+  position: fixed;
+  /* Au-dessus de `.loading-screen` (200) : depuis que cet overlay s'affiche aussi pendant
+     le chargement initial (serveur injoignable dès la première tentative), il doit rester
+     visible par-dessus l'écran de génération plutôt que d'être masqué dessous. */
+  z-index: 210;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    visibility 0s linear 180ms;
+}
+.reconnect-overlay.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -6px);
+  pointer-events: none;
+}
+
+.reconnect-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 11px;
+  background: rgba(126, 45, 40, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.reconnect-card p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.reconnect-card button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 130ms ease;
+}
+.reconnect-card button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}

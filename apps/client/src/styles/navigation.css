@@ -1,0 +1,59 @@
+.world-nav {
+  position: fixed;
+  z-index: 20;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(14, 17, 19, 0.67);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
+}
+.world-nav button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #b7bab6;
+  cursor: pointer;
+  transition:
+    background 130ms ease,
+    color 130ms ease;
+}
+.world-nav button:hover,
+.world-nav button.is-active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.09);
+}
+.world-nav button span {
+  font-size: 17px;
+  font-style: normal;
+}
+.world-nav button em {
+  position: absolute;
+  left: 49px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--glass-strong);
+  opacity: 0;
+  transform: translateX(-4px);
+  pointer-events: none;
+  font-style: normal;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: 130ms ease;
+}
+.world-nav button:hover em {
+  opacity: 1;
+  transform: none;
+}

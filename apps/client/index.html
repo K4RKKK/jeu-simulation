@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Civilisation émergente — observateur</title>
+  </head>
+  <body data-ui-level="full">
+    <canvas id="viewport"></canvas>
+
+    <div id="world-select-screen" class="worlds-screen is-hidden">
+      <div class="worlds-card">
+        <h1>Mes mondes</h1>
+        <div data-continue-slot></div>
+        <ul data-world-list class="world-list"></ul>
+        <button type="button" data-new-world class="worlds-primary-button">+ Nouveau monde</button>
+      </div>
+    </div>
+
+    <div id="world-create-screen" class="worlds-screen is-hidden">
+      <div class="worlds-card">
+        <h1>Nouveau monde</h1>
+        <form data-create-form class="worlds-form">
+          <label class="worlds-field">
+            Nom
+            <input type="text" name="name" required maxlength="64" placeholder="Valley-01" />
+          </label>
+          <label class="worlds-field">
+            Seed
+            <span class="worlds-seed-row">
+              <input type="text" name="seed" placeholder="aléatoire" maxlength="64" />
+              <button
+                type="button"
+                data-random-seed
+                title="Seed aléatoire"
+                aria-label="Seed aléatoire"
+              >
+                🎲
+              </button>
+            </span>
+          </label>
+          <fieldset class="worlds-fieldset">
+            <legend>Taille</legend>
+            <label><input type="radio" name="size" value="small" /> Petite</label>
+            <label><input type="radio" name="size" value="medium" checked /> Moyenne</label>
+            <label><input type="radio" name="size" value="large" /> Grande</label>
+          </fieldset>
+          <label class="worlds-field">
+            Population initiale
+            <input type="number" name="population" value="15" min="1" max="500" />
+          </label>
+          <p data-create-error class="worlds-error is-hidden"></p>
+          <div class="worlds-actions">
+            <button type="button" data-back>← Retour</button>
+            <button type="submit" class="worlds-primary-button">Créer le monde</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="loading-screen" class="loading-screen is-hidden">
+      <div class="loading-card">
+        <h1>Génération du monde</h1>
+        <ul data-loading-steps class="loading-steps"></ul>
+        <div class="loading-progress">
+          <div class="loading-progress__track">
+            <div data-loading-bar class="loading-progress__bar"></div>
+          </div>
+          <span data-loading-percent class="loading-progress__percent">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="reconnect-overlay" class="reconnect-overlay is-hidden">
+      <div class="reconnect-card">
+        <p data-reconnect-message>Connexion au monde perdue.</p>
+        <button type="button" data-reconnect-retry>Réessayer</button>
+      </div>
+    </div>
+
+    <dialog id="app-dialog" class="app-dialog" aria-labelledby="app-dialog-title"></dialog>
+
+    <div id="pause-menu" class="pause-menu is-hidden" aria-hidden="true">
+      <section
+        class="pause-menu__card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pause-title"
+      >
+        <small>Jeu en cours</small>
+        <h1 id="pause-title">Menu</h1>
+        <button type="button" data-pause-resume class="pause-menu__primary">Reprendre</button>
+        <button type="button" data-pause-options>Options</button>
+        <button type="button" data-pause-worlds>Mes mondes</button>
+      </section>
+    </div>
+
+    <header id="player-hud" class="topbar player-ui" aria-label="État du monde">
+      <div class="topbar__world">
+        <span id="hud-date" class="topbar__primary">Jour — · --:--</span>
+        <span class="topbar__separator"></span>
+        <span id="hud-population">— habitants</span>
+        <span class="topbar__separator"></span>
+        <span id="hud-weather">— °C</span>
+      </div>
+      <div class="speed-control" aria-label="Vitesse de simulation">
+        <button type="button" class="icon-button" data-action="pause-toggle" title="Pause">
+          Ⅱ
+        </button>
+        <button type="button" data-speed="1">1×</button>
+        <button type="button" data-speed="2">2×</button>
+        <button type="button" data-speed="4">4×</button>
+        <button type="button" data-speed="8">8×</button>
+      </div>
+    </header>
+
+    <nav class="world-nav player-ui" aria-label="Navigation">
+      <button
+        type="button"
+        data-panel="world"
+        aria-label="Monde"
+        aria-controls="world-panel"
+        aria-expanded="false"
+      >
+        <span>◉</span><em>Monde</em>
+      </button>
+      <button
+        type="button"
+        data-panel="population"
+        aria-label="Population"
+        aria-controls="population-panel"
+        aria-expanded="false"
+      >
+        <span>♙</span><em>Population</em>
+      </button>
+      <button
+        type="button"
+        data-panel="chronicle"
+        aria-label="Chronique"
+        aria-controls="chronicle-panel"
+        aria-expanded="false"
+      >
+        <span>☷</span><em>Chronique</em>
+      </button>
+      <button
+        type="button"
+        data-panel="options"
+        aria-label="Options"
+        aria-controls="options-panel"
+        aria-expanded="false"
+      >
+        <span>⚙</span><em>Options</em>
+      </button>
+    </nav>
+
+    <section id="world-panel" class="drawer player-ui" aria-label="Monde" aria-hidden="true" inert>
+      <header>
+        <div>
+          <small>Vue d'ensemble</small>
+          <h2>Monde</h2>
+        </div>
+        <button type="button" data-close-panel>×</button>
+      </header>
+      <div id="world-content"></div>
+    </section>
+
+    <section
+      id="population-panel"
+      class="drawer player-ui"
+      aria-label="Population"
+      aria-hidden="true"
+      inert
+    >
+      <header>
+        <div>
+          <small>Habitants</small>
+          <h2>Population observée</h2>
+        </div>
+        <button type="button" data-close-panel>×</button>
+      </header>
+      <label class="search-field">
+        <span>⌕</span>
+        <input
+          id="population-search"
+          type="search"
+          placeholder="Rechercher une personne…"
+          autocomplete="off"
+        />
+      </label>
+      <div id="population-list" class="population-list"></div>
+    </section>
+
+    <section
+      id="chronicle-panel"
+      class="drawer player-ui"
+      aria-label="Chronique du monde"
+      aria-hidden="true"
+      inert
+    >
+      <header>
+        <div>
+          <small>Mémoire collective</small>
+          <h2>Chronique</h2>
+        </div>
+        <button type="button" data-close-panel>×</button>
+      </header>
+      <div id="chronicle-list" class="chronicle-list">
+        <p class="empty-state">Les événements importants du monde apparaîtront ici.</p>
+      </div>
+    </section>
+
+    <section
+      id="options-panel"
+      class="drawer player-ui"
+      aria-label="Options"
+      aria-hidden="true"
+      inert
+    >
+      <header>
+        <div>
+          <small>Réglages</small>
+          <h2>Options</h2>
+        </div>
+        <button type="button" data-close-panel>×</button>
+      </header>
+      <div id="options-content"></div>
+    </section>
+
+    <aside
+      id="inspector-panel"
+      class="character-panel player-ui hidden"
+      aria-label="Individu sélectionné"
+      aria-hidden="true"
+      inert
+    >
+      <button type="button" class="panel-close" data-action="close-inspector" aria-label="Fermer">
+        ×
+      </button>
+      <div id="inspector-content"></div>
+    </aside>
+
+    <div id="notification-stack" class="notification-stack player-ui" aria-live="polite"></div>
+    <div id="human-tooltip" class="human-tooltip player-ui hidden" role="tooltip"></div>
+
+    <aside id="debug-panel" class="debug-legacy-panel">
+      <h2>Instrumentation</h2>
+      <dl id="debug-content"></dl>
+      <div class="panel__actions">
+        <button type="button" data-action="pause">Pause</button>
+        <button type="button" data-action="resume">Reprendre</button>
+        <label
+          >Vitesse
+          <select data-action="timescale">
+            <option value="1">×1</option>
+            <option value="4">×4</option>
+            <option value="16">×16</option>
+            <option value="64">×64</option>
+          </select>
+        </label>
+      </div>
+      <h3>Terrain</h3>
+      <label class="wide"
+        >Calque
+        <select data-action="colormode"></select
+      ></label>
+      <label class="checkbox"><input type="checkbox" data-action="chunkborders" /> Bordures</label>
+      <canvas id="minimap" class="minimap"></canvas>
+      <h3>Génération</h3>
+      <div class="panel__actions">
+        <input type="text" id="seed-input" placeholder="seed" />
+        <button type="button" data-action="regenerate">Régénérer</button>
+      </div>
+    </aside>
+
+    <aside id="terrain-panel" class="debug-terrain-panel hidden">
+      <h2>Terrain</h2>
+      <div id="terrain-content"></div>
+    </aside>
+
+    <div id="help" class="help player-ui">
+      <span><b data-help="move">ZQSD</b> déplacer</span
+      ><span><b data-help="rotate">A / E</b> tourner</span
+      ><span><b data-help="follow">F</b> suivre</span
+      ><span><b data-help="cinematic">C</b> cinématique</span>
+      <span><b data-help="interface">H</b> interface</span><span><b>Échap</b> menu</span
+      ><span><b>F2</b> développeur</span>
+    </div>
+
+    <script type="module" src="/src/bootstrap.ts"></script>
+  </body>
+</html>

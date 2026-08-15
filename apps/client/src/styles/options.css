@@ -1,0 +1,104 @@
+.options-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.options-presets button {
+  flex: 1;
+  min-width: 64px;
+  padding: 8px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background 130ms ease,
+    color 130ms ease;
+}
+.options-presets button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+.options-presets button.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #191714;
+  font-weight: 700;
+}
+.options-presets__custom:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.options-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.options-field:last-child {
+  border-bottom: 0;
+}
+.options-field select {
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.options-section-title {
+  margin: 22px 0 6px;
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.options-toggle input {
+  accent-color: var(--accent);
+}
+.options-key,
+.options-reset {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+}
+.options-key {
+  min-width: 74px;
+  padding: 6px 10px;
+}
+.options-key.is-listening {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.options-reset {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px;
+}
+body[data-interface-density='compact'] .drawer {
+  width: min(340px, 92vw);
+}
+body[data-interface-density='compact'] .drawer > header {
+  padding-block: 12px;
+}
+body[data-interface-density='compact'] .population-card {
+  padding-block: 7px;
+}
+body[data-motion='reduced'] *,
+body[data-motion='reduced'] *::before,
+body[data-motion='reduced'] *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.001ms !important;
+  animation-duration: 0.001ms !important;
+}

@@ -1,0 +1,78 @@
+.notification-stack {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+.world-toast {
+  display: grid;
+  grid-template-columns: 8px 1fr;
+  gap: 2px 10px;
+  padding: 12px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.36);
+  animation: toast-in 160ms ease both;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+.world-toast__marker {
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.world-toast--arrival .world-toast__marker {
+  background: var(--positive);
+}
+.world-toast--death .world-toast__marker {
+  background: var(--danger);
+}
+.world-toast__message {
+  line-height: 1.35;
+}
+.world-toast__date {
+  color: var(--faint);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.world-toast--leaving {
+  opacity: 0;
+  transform: translateY(6px);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+}
+
+.human-tooltip {
+  position: fixed;
+  z-index: 35;
+  min-width: 130px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+.human-tooltip strong {
+  display: block;
+  font-size: 12px;
+}
+.human-tooltip span {
+  color: var(--muted);
+  font-size: 10px;
+}
