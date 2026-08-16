@@ -230,10 +230,14 @@ function main(argv: readonly string[]): number {
   }
 
   console.log('\n=== stress:chunks ===');
-  console.log(`  cycles=${options.cycles} rayon=${options.radius} fenêtre=${(options.radius * 2 + 1) ** 2} chunks`);
+  console.log(
+    `  cycles=${options.cycles} rayon=${options.radius} fenêtre=${(options.radius * 2 + 1) ** 2} chunks`,
+  );
   console.log(`  durée: ${(elapsedMs / 1000).toFixed(1)} s`);
   console.log(`  tas JS: ${heapSamples[0]} Mo → ${heapSamples.at(-1)} Mo`);
-  console.log(`  cache: ${firstHalfAvg.toFixed(0)} → ${secondHalfAvg.toFixed(0)} entrées (moyenne 1ère/2e moitié, hors montée en charge)`);
+  console.log(
+    `  cache: ${firstHalfAvg.toFixed(0)} → ${secondHalfAvg.toFixed(0)} entrées (moyenne 1ère/2e moitié, hors montée en charge)`,
+  );
 
   if (anomalies.length === 0) {
     console.log('\n✓ Aucune anomalie détectée.');

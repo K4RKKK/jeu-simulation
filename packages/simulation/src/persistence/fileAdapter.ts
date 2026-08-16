@@ -118,10 +118,7 @@ export class FilePersistenceAdapter implements PersistenceAdapter {
   async saveActiveWorld(name: string): Promise<void> {
     assertSafeName(name);
     await mkdir(this.directory, { recursive: true });
-    await this.writeAtomically(
-      join(this.directory, ACTIVE_WORLD_FILE),
-      JSON.stringify({ name }),
-    );
+    await this.writeAtomically(join(this.directory, ACTIVE_WORLD_FILE), JSON.stringify({ name }));
   }
 
   /**

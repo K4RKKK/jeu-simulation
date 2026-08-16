@@ -54,6 +54,7 @@ Fichiers concernés (`packages/procedural/src/hydrology/`) :
   praticabilité, placement de ressources) et par la simulation (boire, traverser à gué).
 
 Côté rendu (`apps/client/src/render/`) :
+
 - `waterGeometry.ts` — construit un maillage d'eau par chunk en clippant chaque triangle
   du maillage de terrain contre la ligne de rivage (déjà correct : gère un coin mouillé
   sur quatre sans "coin bleu" grossier).
@@ -72,8 +73,8 @@ via `sampleWater()`/`carve01At()`, jamais l'inverse.
    voisines sur la grille grossière (connectivité 8-directions) : les virages ne peuvent
    se faire qu'à 45°/90°, ce qui donne un tracé en escalier/zig-zag plutôt qu'un
    méandre naturel, très visible en vue aérienne. Aucun lissage de type spline n'existe
-   sur la ligne centrale elle-même (seul le *raccord berge/terrain* est lissé, pas la
-   *trajectoire*).
+   sur la ligne centrale elle-même (seul le _raccord berge/terrain_ est lissé, pas la
+   _trajectoire_).
 
 2. **Fragmentation visuelle des rivières étroites.** Diagnostic confirmé sur plusieurs
    seeds : la donnée hydrologique elle-même est saine (chaque rivière logique = une seule
@@ -85,7 +86,7 @@ via `sampleWater()`/`carve01At()`, jamais l'inverse.
    centre d'une cellule. Mesuré : ~45 % seulement des sommets du maillage fin dans
    l'emprise d'un ruisseau étroit sont effectivement rendus comme eau → ruban d'eau
    visiblement pointillé. Baisser le seuil de masque (`MIN_WATER_MASK`) n'apporte quasi
-   aucun gain (45→47 %) : le vrai verrou est la dilution de la *profondeur*, pas du
+   aucun gain (45→47 %) : le vrai verrou est la dilution de la _profondeur_, pas du
    masque de présence.
 
 3. **Résolution unique, non adaptative.** La grille grossière est à 6 m partout, aussi
@@ -146,8 +147,8 @@ via `sampleWater()`/`carve01At()`, jamais l'inverse.
   le long de la ligne, dans l'esprit du bruit continu déjà utilisé pour le relief).
 - Lissage explicite de la trajectoire (relaxation/spline) en plus du lissage déjà
   existant du raccord berge/terrain.
-- Séparer clairement *tracé/largeur* (déterministe, dérivé du relief et du débit) de
-  *rendu* (comment le client construit son maillage), pour que la fragmentation
+- Séparer clairement _tracé/largeur_ (déterministe, dérivé du relief et du débit) de
+  _rendu_ (comment le client construit son maillage), pour que la fragmentation
   actuelle — un problème d'échantillonnage au rendu — ne puisse plus se reproduire quelle
   que soit la résolution du maillage de terrain choisie plus tard.
 
@@ -165,7 +166,7 @@ via `sampleWater()`/`carve01At()`, jamais l'inverse.
 - Pas de `as any` (règle 11) ; une erreur de type = corriger le modèle de données.
 - Ajoute des tests couvrant explicitement les défauts listés plus haut (ex. : un test qui
   génère un monde réel et vérifie que **chaque** rivière logique correspond à une seule
-  composante connexe de sommets *effectivement rendus comme eau* au pas du maillage fin,
+  composante connexe de sommets _effectivement rendus comme eau_ au pas du maillage fin,
   pas seulement au centre des cellules grossières — c'est exactement le diagnostic qui a
   révélé le bug #2, formalise-le en test de non-régression).
 
@@ -180,6 +181,6 @@ via `sampleWater()`/`carve01At()`, jamais l'inverse.
   tests existants qui les couvrent dans `hydrology.test.ts`).
 - Aucune régression de déterminisme (les tests de `packages/simulation` couvrant
   save/load doivent rester verts sans modification de leur seuil/tolérance).
-- Documente dans le code (commentaires qui expliquent le *pourquoi*, pas le *quoi* —
+- Documente dans le code (commentaires qui expliquent le _pourquoi_, pas le _quoi_ —
   convention du projet) les nouvelles invariantes introduites, sur le modèle des
   commentaires déjà présents dans `waterBodiesGenerator.ts`/`riverGenerator.ts`.

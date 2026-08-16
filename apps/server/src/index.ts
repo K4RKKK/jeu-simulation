@@ -17,6 +17,7 @@ import {
   SimulationHost,
   WorldNotFoundError,
 } from './simulationHost.js';
+import { registerStaticClient } from './staticClient.js';
 
 function toWorldSummary(metadata: SaveMetadata, activeWorldName: string): WorldSummary {
   return {
@@ -202,6 +203,8 @@ async function main(): Promise<void> {
   app.get(WS_PATH, { websocket: true }, (socket: WebSocket) => {
     host.addClient(socket);
   });
+
+  await registerStaticClient(app, process.env.CIV_CLIENT_DIR);
 
   // La sauvegarde existante (s'il y en a une) est chargée avant que quoi que ce soit
   // ne tourne : le monde ne doit jamais démarrer deux fois (une fois neuf, une fois

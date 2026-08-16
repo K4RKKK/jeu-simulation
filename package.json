@@ -1,6 +1,6 @@
 {
   "name": "civ-sim",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.4",
@@ -21,6 +21,7 @@
     "stress:simulation": "tsx packages/simulation/src/stress/simulation.ts",
     "stress:benchmark": "tsx packages/simulation/src/stress/benchmark.ts",
     "build": "pnpm run typecheck && pnpm --filter @civ/server run build && pnpm --filter @civ/client run build",
+    "build:release": "pnpm run typecheck && pnpm --filter @civ/server run build -- --standalone && pnpm --filter @civ/client run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm run test:unit && pnpm run test:performance",
     "test:unit": "vitest run --exclude packages/procedural/src/worldGeneration.test.ts",

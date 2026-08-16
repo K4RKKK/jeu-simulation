@@ -20,10 +20,7 @@ export interface DrainageResult {
  * et l'accumulation du flux dans chaque cellule. Le résultat est une vue brute du bassin
  * versant — à ce stade, aucune eau n'est encore visible.
  */
-export function computeDrainage(
-  grid: CoarseGrid,
-  elevation: ElevationGenerator,
-): DrainageResult {
+export function computeDrainage(grid: CoarseGrid, elevation: ElevationGenerator): DrainageResult {
   const base = sampleElevationGrid(grid, elevation);
   const { filled, flooded } = fillDepressions(grid, base);
   const flow = computeFlowField(grid, filled);

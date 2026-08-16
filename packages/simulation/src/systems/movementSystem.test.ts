@@ -116,7 +116,14 @@ describe('MovementSystem', () => {
   it('consumes each waypoint and carries the remaining step to the next one', () => {
     // Trois points alignés, espacés de 10 m : un pas de 25 m doit atteindre le point
     // médian ET entamer le dernier segment dans le même tick.
-    const entity = makeWalker([{ x: 0, z: 10 }, { x: 0, z: 20 }, { x: 0, z: 30 }], 25);
+    const entity = makeWalker(
+      [
+        { x: 0, z: 10 },
+        { x: 0, z: 20 },
+        { x: 0, z: 30 },
+      ],
+      25,
+    );
     system.update(context(1));
 
     const transform = entities.getComponentOrThrow(entity, Transform);

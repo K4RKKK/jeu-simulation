@@ -185,7 +185,8 @@ function makeStandingBody(
     contamination: clamp01(profile.baseContamination * (1 + stagnation * 1.2)),
     pathogenLoad: clamp01(profile.basePathogenLoad * (1 + stagnation * 1.8 + shallowness * 0.6)),
     turbidity: clamp01(profile.baseTurbidity * (1 + shallowness * 0.8)),
-    temperatureC: 12 + profile.temperatureOffsetC + (localTemperature01 - 0.5) * 16 + shallowness * 2,
+    temperatureC:
+      12 + profile.temperatureOffsetC + (localTemperature01 - 0.5) * 16 + shallowness * 2,
     flowRenewal,
     wadeableDepthM: profile.wadeableDepthM,
   };

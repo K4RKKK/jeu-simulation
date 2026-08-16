@@ -54,7 +54,12 @@ describe('World — cache de chunks', () => {
     const victim = chunk.resources[0];
     expect(victim).toBeDefined();
 
-    world.delta.markDepleted(victim!.id, victim!.ownerChunkKey, victim!.localId, world.clock.currentTick);
+    world.delta.markDepleted(
+      victim!.id,
+      victim!.ownerChunkKey,
+      victim!.localId,
+      world.clock.currentTick,
+    );
     const after = world.generateChunk({ x: 0, z: 0 });
     expect(after.resources.some((resource) => resource.id === victim!.id)).toBe(false);
   });
@@ -119,20 +124,44 @@ describe('World — récolte progressive (harvestResource)', () => {
     const victim: ResourceSpawn = chunk.resources[0]!;
 
     expect(
-      world.harvestResource(victim.id, victim.ownerChunkKey, victim.localId, 3, victim.x, victim.z, 0),
+      world.harvestResource(
+        victim.id,
+        victim.ownerChunkKey,
+        victim.localId,
+        3,
+        victim.x,
+        victim.z,
+        0,
+      ),
     ).toBe(2);
     expect(world.delta.isDepleted(victim.id)).toBe(false);
     expect(world.delta.get(victim.id)?.changedFields.remainingFraction01).toBeCloseTo(2 / 3, 6);
     expect(world.delta.get(victim.id)?.localId).toBe(victim.localId);
 
     expect(
-      world.harvestResource(victim.id, victim.ownerChunkKey, victim.localId, 3, victim.x, victim.z, 1),
+      world.harvestResource(
+        victim.id,
+        victim.ownerChunkKey,
+        victim.localId,
+        3,
+        victim.x,
+        victim.z,
+        1,
+      ),
     ).toBe(1);
     expect(world.delta.isDepleted(victim.id)).toBe(false);
 
     // La dernière portion retire la ressource comme le ferait un retrait complet.
     expect(
-      world.harvestResource(victim.id, victim.ownerChunkKey, victim.localId, 3, victim.x, victim.z, 2),
+      world.harvestResource(
+        victim.id,
+        victim.ownerChunkKey,
+        victim.localId,
+        3,
+        victim.x,
+        victim.z,
+        2,
+      ),
     ).toBe(0);
     expect(world.delta.isDepleted(victim.id)).toBe(true);
   });
@@ -143,7 +172,15 @@ describe('World — récolte progressive (harvestResource)', () => {
     const victim: ResourceSpawn = chunk.resources[0]!;
 
     expect(
-      world.harvestResource(victim.id, victim.ownerChunkKey, victim.localId, 1, victim.x, victim.z, 0),
+      world.harvestResource(
+        victim.id,
+        victim.ownerChunkKey,
+        victim.localId,
+        1,
+        victim.x,
+        victim.z,
+        0,
+      ),
     ).toBe(0);
     expect(world.delta.isDepleted(victim.id)).toBe(true);
     expect(world.journal.consumeRemovals()).toHaveLength(1);
@@ -154,7 +191,15 @@ describe('World — récolte progressive (harvestResource)', () => {
     const chunk = world.generateChunk({ x: 0, z: 0 });
     const victim: ResourceSpawn = chunk.resources[0]!;
 
-    world.harvestResource(victim.id, victim.ownerChunkKey, victim.localId, 4, victim.x, victim.z, 0);
+    world.harvestResource(
+      victim.id,
+      victim.ownerChunkKey,
+      victim.localId,
+      4,
+      victim.x,
+      victim.z,
+      0,
+    );
 
     const updates = world.journal.consumeResourceUpdates();
     expect(updates).toHaveLength(1);

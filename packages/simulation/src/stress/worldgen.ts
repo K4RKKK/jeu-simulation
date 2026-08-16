@@ -1,5 +1,8 @@
 import { ProceduralGenerator } from '@civ/procedural';
-import { checkPerformanceBudgets, DEFAULT_PERFORMANCE_BUDGETS } from '../config/performanceBudgets.js';
+import {
+  checkPerformanceBudgets,
+  DEFAULT_PERFORMANCE_BUDGETS,
+} from '../config/performanceBudgets.js';
 import { concludeStress, heapUsedMb, parseNumericFlags } from './stressArgs.js';
 
 /**
@@ -60,7 +63,9 @@ function main(argv: readonly string[]): number {
         anomalies.push(`${seed} ${chunkA.key}: terrain non déterministe entre deux générateurs`);
       }
       if (chunkA.resources.length !== chunkB.resources.length) {
-        anomalies.push(`${seed} ${chunkA.key}: nombre de ressources différent entre deux générateurs`);
+        anomalies.push(
+          `${seed} ${chunkA.key}: nombre de ressources différent entre deux générateurs`,
+        );
       }
 
       // NaN / Infinity dans les hauteurs.
@@ -94,7 +99,9 @@ function main(argv: readonly string[]): number {
           anomalies.push(`${seed} ${chunkA.key}: position non finie pour ${spawn.id}`);
         }
       }
-      const expectedLocalIds = new Set(Array.from({ length: chunkA.resources.length }, (_, i) => i));
+      const expectedLocalIds = new Set(
+        Array.from({ length: chunkA.resources.length }, (_, i) => i),
+      );
       if (
         seenLocalIds.size !== expectedLocalIds.size ||
         [...expectedLocalIds].some((id) => !seenLocalIds.has(id))
@@ -113,16 +120,12 @@ function main(argv: readonly string[]): number {
     );
   }
 
-  return concludeStress(
-    'stress:worldgen',
-    { anomalies },
-    [
-      `seeds=${options.seeds} chunks/seed=${options.chunks} chunks_total=${chunksChecked} resources_total=${resourcesChecked}`,
-      `durée: ${(elapsedMs / 1000).toFixed(1)} s (${(elapsedMs / chunksChecked).toFixed(2)} ms/chunk moyenne, p95=${generationP95.toFixed(2)} ms)`,
-      `budget: chunkGenerationMsP95≤${DEFAULT_PERFORMANCE_BUDGETS.chunkGenerationMsP95}ms`,
-      `tas JS: ${startHeap} Mo → ${heapUsedMb()} Mo`,
-    ],
-  );
+  return concludeStress('stress:worldgen', { anomalies }, [
+    `seeds=${options.seeds} chunks/seed=${options.chunks} chunks_total=${chunksChecked} resources_total=${resourcesChecked}`,
+    `durée: ${(elapsedMs / 1000).toFixed(1)} s (${(elapsedMs / chunksChecked).toFixed(2)} ms/chunk moyenne, p95=${generationP95.toFixed(2)} ms)`,
+    `budget: chunkGenerationMsP95≤${DEFAULT_PERFORMANCE_BUDGETS.chunkGenerationMsP95}ms`,
+    `tas JS: ${startHeap} Mo → ${heapUsedMb()} Mo`,
+  ]);
 }
 
 function percentile(values: readonly number[], fraction: number): number {

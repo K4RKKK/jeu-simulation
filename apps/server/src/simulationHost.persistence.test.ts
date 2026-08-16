@@ -103,7 +103,7 @@ describe('SimulationHost — persistance', () => {
     await expect(host.stop()).resolves.toBeUndefined();
   });
 
-  it("initialize() rejette plutôt que de démarrer un monde neuf quand la sauvegarde est corrompue", async () => {
+  it('initialize() rejette plutôt que de démarrer un monde neuf quand la sauvegarde est corrompue', async () => {
     const host = new SimulationHost(makeConfig({ saveDir: dir, saveSlot: 'corrupt-world' }));
     await host.initialize();
     host.currentSimulation.step(20);

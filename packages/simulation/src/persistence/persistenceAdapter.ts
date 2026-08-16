@@ -189,7 +189,8 @@ export function validateSimulationSnapshot(value: unknown, name: string): Simula
   if (!isRecord(value)) throw new CorruptedSaveError(name, 'snapshot absent ou non-objet.');
   const errors: string[] = [];
   if (typeof value.version !== 'number') errors.push('version manquante');
-  if (value.worldId !== undefined && !isNonEmptyString(value.worldId)) errors.push('worldId invalide');
+  if (value.worldId !== undefined && !isNonEmptyString(value.worldId))
+    errors.push('worldId invalide');
   if (!isNonEmptyString(value.seed)) errors.push('seed manquant');
   if (!isNonEmptyString(value.generationVersion)) errors.push('generationVersion manquant');
   if (!isNonEmptyString(value.configFingerprint)) errors.push('configFingerprint manquant');

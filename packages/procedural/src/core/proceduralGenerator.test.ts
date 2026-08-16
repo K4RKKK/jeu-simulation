@@ -32,7 +32,7 @@ describe('ProceduralGenerator.fingerprintSource', () => {
    * `generationVersion` (une chaîne bumpée à la main) aurait pu détecter cette dérive —
    * et seulement si quelqu'un avait pensé à la bumper.
    */
-  it("change quand un paramètre numérique de génération change (ex: hydrology.waterLevel01)", () => {
+  it('change quand un paramètre numérique de génération change (ex: hydrology.waterLevel01)', () => {
     const base = new ProceduralGenerator({ seed: 'fp-param' });
     const changed = new ProceduralGenerator({
       seed: 'fp-param',

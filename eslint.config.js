@@ -48,7 +48,14 @@ const SIMULATION_DETERMINISM_RULES = {
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/*.d.ts'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/coverage/**',
+      '**/*.d.ts',
+      '.codex-tools/**',
+      'release/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

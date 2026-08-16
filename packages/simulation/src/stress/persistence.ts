@@ -113,15 +113,11 @@ async function main(argv: readonly string[]): Promise<number> {
   const elapsedMs = performance.now() - startedAt;
   const heapGrowth = (heapSamples.at(-1) ?? 0) - (heapSamples[0] ?? 0);
 
-  return concludeStress(
-    'stress:persistence',
-    { anomalies },
-    [
-      `cycles=${options.cycles} ticks/cycle=${options.ticksPerCycle} total_ticks=${options.cycles * options.ticksPerCycle}`,
-      `durée: ${(elapsedMs / 1000).toFixed(1)} s`,
-      `tas JS: ${heapSamples[0]} Mo → ${heapSamples.at(-1)} Mo (Δ ${heapGrowth >= 0 ? '+' : ''}${heapGrowth.toFixed(1)} Mo)`,
-    ],
-  );
+  return concludeStress('stress:persistence', { anomalies }, [
+    `cycles=${options.cycles} ticks/cycle=${options.ticksPerCycle} total_ticks=${options.cycles * options.ticksPerCycle}`,
+    `durée: ${(elapsedMs / 1000).toFixed(1)} s`,
+    `tas JS: ${heapSamples[0]} Mo → ${heapSamples.at(-1)} Mo (Δ ${heapGrowth >= 0 ? '+' : ''}${heapGrowth.toFixed(1)} Mo)`,
+  ]);
 }
 
 main(process.argv.slice(2))

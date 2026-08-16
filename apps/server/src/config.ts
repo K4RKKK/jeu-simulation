@@ -71,7 +71,9 @@ function readOptionalNumber(name: string, fallback: number): number {
   if (raw === undefined || raw.trim() === '') return fallback;
   const value = Number(raw);
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`Environment variable ${name} must be a non-negative number (received "${raw}")`);
+    throw new Error(
+      `Environment variable ${name} must be a non-negative number (received "${raw}")`,
+    );
   }
   return value;
 }
