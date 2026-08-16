@@ -9,7 +9,16 @@ import type {
   PersonalityComponent,
   TransformComponent,
 } from '../components/index.js';
-import { Activity, Human, Memory, Movement, Needs, NeedsState, Personality, Transform } from '../components/index.js';
+import {
+  Activity,
+  Human,
+  Memory,
+  Movement,
+  Needs,
+  NeedsState,
+  Personality,
+  Transform,
+} from '../components/index.js';
 import { quantize } from '../core/math.js';
 import type { SimulationSnapshot } from '../persistence/simulationSnapshot.js';
 import type { Simulation } from '../simulation.js';
@@ -41,7 +50,10 @@ interface CanonicalHuman {
    * Sous-ensemble de `MovementComponent` : `waypoints`/`pathPendingFor`/`pathRequestId`
    * sont volontairement absents — voir le commentaire au point d'écriture plus bas.
    */
-  readonly movement: Pick<MovementComponent, 'walkSpeedMps' | 'currentSpeedMps' | 'targetX' | 'targetZ'>;
+  readonly movement: Pick<
+    MovementComponent,
+    'walkSpeedMps' | 'currentSpeedMps' | 'targetX' | 'targetZ'
+  >;
   readonly activity: ActivityComponent;
   readonly personality: PersonalityComponent | null;
   readonly needs: NeedsComponent | null;
@@ -213,7 +225,17 @@ function fnv1aHashState(state: CanonicalState): string {
   // déjà canonique (trié par identifiant), une simple sérialisation suffit.
   write(`delta:${JSON.stringify(state.deltaJson)}`);
 
-  for (const { id: entity, human, transform, movement, activity, personality, needs, needsState, memory } of state.humans) {
+  for (const {
+    id: entity,
+    human,
+    transform,
+    movement,
+    activity,
+    personality,
+    needs,
+    needsState,
+    memory,
+  } of state.humans) {
     write(
       [
         'e',

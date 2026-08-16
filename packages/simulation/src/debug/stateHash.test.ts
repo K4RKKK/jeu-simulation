@@ -7,7 +7,7 @@ function makeSimulation(seed: string, population = 6): Simulation {
 }
 
 describe('hashSnapshot', () => {
-  it("égale hashWorldState(source) au moment MÊME de la capture — sans passer par restoreSnapshot", () => {
+  it('égale hashWorldState(source) au moment MÊME de la capture — sans passer par restoreSnapshot', () => {
     const source = makeSimulation('hash-snapshot-capture', 8);
     source.start();
     source.step(400);

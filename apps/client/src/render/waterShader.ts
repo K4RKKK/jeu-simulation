@@ -24,7 +24,6 @@ const VERTEX_SHADER = /* glsl */ `
   uniform vec2 uOrigin;
   uniform float uWaveHeight;
   uniform float uFlowSpeed;
-  uniform float uRain;
 
   varying vec3 vWorldPos;
   varying vec3 vNormal;
@@ -64,6 +63,7 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform float uFogFar;
   uniform float uOpacity;
   uniform float uFlowSpeed;
+  uniform float uRain;
   uniform vec3 uShallowColor;
   uniform vec3 uDeepColor;
 

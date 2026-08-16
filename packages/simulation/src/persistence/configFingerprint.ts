@@ -33,7 +33,8 @@ function canonicalStringify(value: unknown): string {
   }
   const keys = Object.keys(value as Record<string, unknown>).sort();
   const parts = keys.map(
-    (key) => `${JSON.stringify(key)}:${canonicalStringify((value as Record<string, unknown>)[key])}`,
+    (key) =>
+      `${JSON.stringify(key)}:${canonicalStringify((value as Record<string, unknown>)[key])}`,
   );
   return `{${parts.join(',')}}`;
 }

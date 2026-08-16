@@ -174,7 +174,10 @@ describe('WorldChangeJournal — resourceUpdates', () => {
       tick: 10,
     });
 
-    const ids = journal.consumeResourceUpdates().map((update) => update.resourceId).sort();
+    const ids = journal
+      .consumeResourceUpdates()
+      .map((update) => update.resourceId)
+      .sort();
     expect(ids).toEqual(['res-a', 'res-b']);
   });
 });

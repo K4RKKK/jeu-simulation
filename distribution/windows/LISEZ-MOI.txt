@@ -1,0 +1,19 @@
+CIVILISATION EMERGENTE — VERSION 1.0.0
+=======================================
+
+DEMARRER
+--------
+Double-cliquez sur « Lancer le jeu.cmd ».
+
+Le navigateur s'ouvre automatiquement. Gardez la fenetre de lancement ouverte pendant
+la partie : la fermer arrete le monde. Aucun logiciel supplementaire n'est necessaire.
+
+SAUVEGARDES
+-----------
+Vos mondes sont conserves dans le dossier « saves » cree au premier lancement.
+Pour conserver une copie, sauvegardez simplement ce dossier.
+
+DEPANNAGE
+---------
+Si le jeu ne demarre pas, consultez « logs\server.log ».
+Le port local 8787 doit etre disponible. Le jeu n'expose le serveur que sur votre PC.

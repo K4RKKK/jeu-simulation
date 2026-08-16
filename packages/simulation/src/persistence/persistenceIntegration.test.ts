@@ -53,7 +53,10 @@ describe('Persistence — bout en bout (Simulation ↔ disque)', () => {
     const source = make();
     source.start();
     source.step(2000);
-    await adapter.save('continue-slot', createSaveEnvelope(source, 'continue-slot', '2026-08-13T00:00:00.000Z'));
+    await adapter.save(
+      'continue-slot',
+      createSaveEnvelope(source, 'continue-slot', '2026-08-13T00:00:00.000Z'),
+    );
     source.dispose();
 
     const envelope = (await adapter.load('continue-slot'))!;
@@ -75,7 +78,10 @@ describe('Persistence — bout en bout (Simulation ↔ disque)', () => {
     const source = makeSimulation('e2e-list', 4);
     source.start();
     source.step(100);
-    await adapter.save('listed', createSaveEnvelope(source, 'listed', '2026-08-13T00:00:00.000Z', 'avant-orage'));
+    await adapter.save(
+      'listed',
+      createSaveEnvelope(source, 'listed', '2026-08-13T00:00:00.000Z', 'avant-orage'),
+    );
     source.dispose();
 
     const list = await adapter.list();
@@ -116,7 +122,10 @@ describe('Persistence — bout en bout (Simulation ↔ disque)', () => {
     const source = makeSimulation('seed-original', 4);
     source.start();
     source.step(50);
-    await adapter.save('mismatch', createSaveEnvelope(source, 'mismatch', '2026-08-13T00:00:00.000Z'));
+    await adapter.save(
+      'mismatch',
+      createSaveEnvelope(source, 'mismatch', '2026-08-13T00:00:00.000Z'),
+    );
     source.dispose();
 
     const envelope = (await adapter.load('mismatch'))!;

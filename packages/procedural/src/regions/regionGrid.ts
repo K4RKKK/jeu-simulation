@@ -28,7 +28,11 @@ export function regionKey(coord: RegionCoordinate): string {
  * climatique continu ne peut pas offrir. Améliorable plus tard sans rien casser en aval,
  * `RegionCoordinate` restant l'identité stable quelle que soit la forme du découpage.
  */
-export function regionAt(worldX: number, worldZ: number, regionSizeMeters: number): RegionCoordinate {
+export function regionAt(
+  worldX: number,
+  worldZ: number,
+  regionSizeMeters: number,
+): RegionCoordinate {
   return {
     x: Math.floor(worldX / regionSizeMeters),
     z: Math.floor(worldZ / regionSizeMeters),

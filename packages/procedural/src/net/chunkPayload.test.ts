@@ -38,7 +38,9 @@ describe('toChunkPayload — localId aller-retour', () => {
   });
 });
 
-function spawn(overrides: Partial<ChunkData['resources'][number]> & { id: string; localId: number }) {
+function spawn(
+  overrides: Partial<ChunkData['resources'][number]> & { id: string; localId: number },
+) {
   return {
     id: overrides.id,
     definitionId: 'tree_broadleaf',
@@ -56,10 +58,7 @@ function spawn(overrides: Partial<ChunkData['resources'][number]> & { id: string
   };
 }
 
-function fakeChunkData(
-  resources: ChunkData['resources'][number][],
-  _chunkSize: number,
-): ChunkData {
+function fakeChunkData(resources: ChunkData['resources'][number][], _chunkSize: number): ChunkData {
   const resolution = 4;
   const vertexCount = (resolution + 1) * (resolution + 1);
   return {

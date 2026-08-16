@@ -1,4 +1,11 @@
-import { Activity, Memory, Movement, Needs, NeedsState, Transform } from '../../components/index.js';
+import {
+  Activity,
+  Memory,
+  Movement,
+  Needs,
+  NeedsState,
+  Transform,
+} from '../../components/index.js';
 import type {
   ActivityComponent,
   MemoryComponent,
@@ -16,7 +23,11 @@ import {
   endResourceInteraction,
   harvestInteractiveResource,
 } from '../../world/resourceInteraction.js';
-import { nearestFood, nearestWater, type PerceptionMemoryConfig } from '../perception/perceptionModel.js';
+import {
+  nearestFood,
+  nearestWater,
+  type PerceptionMemoryConfig,
+} from '../perception/perceptionModel.js';
 
 /**
  * Décide des actions vitales quand un besoin devient critique (CLAUDE.md règle 7 : il
@@ -73,7 +84,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         const fulfilled =
           state.action === 'drink' && needs.hydration >= ctx.config.needs.hydration.drinkTarget;
         const replete = state.action === 'eat' && needs.hunger >= ctx.config.needs.hunger.eatTarget;
-        const rested = state.action === 'rest' && needs.energy >= ctx.config.needs.energy.restTarget;
+        const rested =
+          state.action === 'rest' && needs.energy >= ctx.config.needs.energy.restTarget;
         if (fulfilled || replete || rested || ctx.tick >= state.untilTick) {
           this.finishAction(ctx, entity, needs, state, activity);
         }
@@ -401,8 +413,12 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   private memoryConfig(ctx: SystemUpdateContext): PerceptionMemoryConfig {
     return {
-      foodMemoryTtlTicks: Math.ceil(ctx.config.perception.foodMemoryTtlSeconds / ctx.clock.gameSecondsPerTick),
-      waterMemoryTtlTicks: Math.ceil(ctx.config.perception.waterMemoryTtlSeconds / ctx.clock.gameSecondsPerTick),
+      foodMemoryTtlTicks: Math.ceil(
+        ctx.config.perception.foodMemoryTtlSeconds / ctx.clock.gameSecondsPerTick,
+      ),
+      waterMemoryTtlTicks: Math.ceil(
+        ctx.config.perception.waterMemoryTtlSeconds / ctx.clock.gameSecondsPerTick,
+      ),
       maxFoodEntries: ctx.config.perception.maxFoodEntries,
       maxWaterEntries: ctx.config.perception.maxWaterEntries,
     };

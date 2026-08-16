@@ -8,13 +8,22 @@ describe('PathCache', () => {
   it('returns null on a miss and the path on a hit', () => {
     const cache = new PathCache(8);
     expect(cache.get(start, goal)).toBeNull();
-    cache.set(start, goal, [{ x: 0, z: 0 }, { x: 5, z: 5 }]);
-    expect(cache.get(start, goal)).toEqual([{ x: 0, z: 0 }, { x: 5, z: 5 }]);
+    cache.set(start, goal, [
+      { x: 0, z: 0 },
+      { x: 5, z: 5 },
+    ]);
+    expect(cache.get(start, goal)).toEqual([
+      { x: 0, z: 0 },
+      { x: 5, z: 5 },
+    ]);
   });
 
   it('returns the very same array on a hit (read-only contract)', () => {
     const cache = new PathCache(8);
-    const path = [{ x: 0, z: 0 }, { x: 5, z: 5 }];
+    const path = [
+      { x: 0, z: 0 },
+      { x: 5, z: 5 },
+    ];
     cache.set(start, goal, path);
     expect(cache.get(start, goal)).toBe(path);
   });
@@ -43,7 +52,10 @@ describe('PathCache', () => {
   it('overwrites an existing key', () => {
     const cache = new PathCache(8);
     const first = [{ x: 0, z: 0 }];
-    const second = [{ x: 0, z: 0 }, { x: 1, z: 1 }];
+    const second = [
+      { x: 0, z: 0 },
+      { x: 1, z: 1 },
+    ];
     cache.set(start, goal, first);
     cache.set(start, goal, second);
     expect(cache.get(start, goal)).toBe(second);

@@ -1,5 +1,8 @@
 import { NavGrid, PathFindingService, type PathRequestOutcome } from '@civ/pathfinding';
-import { checkPerformanceBudgets, DEFAULT_PERFORMANCE_BUDGETS } from '../config/performanceBudgets.js';
+import {
+  checkPerformanceBudgets,
+  DEFAULT_PERFORMANCE_BUDGETS,
+} from '../config/performanceBudgets.js';
 import { Simulation } from '../simulation.js';
 import { terrainTileCostProvider } from '../systems/pathfinding/terrainCostProvider.js';
 import { concludeStress, heapUsedMb, parseNumericFlags } from './stressArgs.js';
@@ -110,14 +113,23 @@ function main(argv: readonly string[]): number {
     try {
       reply = service.request(from, to, i);
     } catch (error) {
-      anomalies.push(`requête ${i} (${from.x.toFixed(0)},${from.z.toFixed(0)})→(${to.x.toFixed(0)},${to.z.toFixed(0)}): exception ${String(error)}`);
+      anomalies.push(
+        `requête ${i} (${from.x.toFixed(0)},${from.z.toFixed(0)})→(${to.x.toFixed(0)},${to.z.toFixed(0)}): exception ${String(error)}`,
+      );
       continue;
     }
 
     if (reply.immediate !== null) {
       immediate++;
       latenciesMs.push(performance.now() - requestStart);
-      checkPath(reply.immediate.path, i, anomalies, simulation, (n) => (totalWaypoints += n, pathsFound++), () => pathsImpossible++);
+      checkPath(
+        reply.immediate.path,
+        i,
+        anomalies,
+        simulation,
+        (n) => ((totalWaypoints += n), pathsFound++),
+        () => pathsImpossible++,
+      );
     } else {
       queued++;
       requestStartedAt.set(reply.requestId as number, requestStart);
@@ -138,7 +150,14 @@ function main(argv: readonly string[]): number {
         latenciesMs.push(performance.now() - start);
         requestStartedAt.delete(outcome.request.id);
       }
-      checkPath(outcome.path, outcome.request.id, anomalies, simulation, (n) => (totalWaypoints += n, pathsFound++), () => pathsImpossible++);
+      checkPath(
+        outcome.path,
+        outcome.request.id,
+        anomalies,
+        simulation,
+        (n) => ((totalWaypoints += n), pathsFound++),
+        () => pathsImpossible++,
+      );
     }
   }
 
@@ -152,7 +171,14 @@ function main(argv: readonly string[]): number {
         latenciesMs.push(performance.now() - start);
         requestStartedAt.delete(outcome.request.id);
       }
-      checkPath(outcome.path, outcome.request.id, anomalies, simulation, (n) => (totalWaypoints += n, pathsFound++), () => pathsImpossible++);
+      checkPath(
+        outcome.path,
+        outcome.request.id,
+        anomalies,
+        simulation,
+        (n) => ((totalWaypoints += n), pathsFound++),
+        () => pathsImpossible++,
+      );
     }
     guard++;
   }
@@ -169,19 +195,15 @@ function main(argv: readonly string[]): number {
     );
   }
 
-  return concludeStress(
-    'stress:pathfinding',
-    { anomalies },
-    [
-      `requêtes=${options.requests} immédiates=${immediate} mises_en_file=${queued}`,
-      `chemins_trouvés=${pathsFound} impossibles=${pathsImpossible} cache=${service.cacheSize}`,
-      `waypoints_moyens=${pathsFound === 0 ? 0 : (totalWaypoints / pathsFound).toFixed(1)}`,
-      `latence: p50=${percentile(latenciesMs, 0.5).toFixed(2)}ms p95=${p95.toFixed(2)}ms max=${percentile(latenciesMs, 1).toFixed(2)}ms`,
-      `budget: pathfindingMsPerRequestP95≤${DEFAULT_PERFORMANCE_BUDGETS.pathfindingMsPerRequestP95}ms`,
-      `durée totale: ${(elapsedMs / 1000).toFixed(1)} s`,
-      `tas JS: ${startHeap} Mo → ${heapUsedMb()} Mo`,
-    ],
-  );
+  return concludeStress('stress:pathfinding', { anomalies }, [
+    `requêtes=${options.requests} immédiates=${immediate} mises_en_file=${queued}`,
+    `chemins_trouvés=${pathsFound} impossibles=${pathsImpossible} cache=${service.cacheSize}`,
+    `waypoints_moyens=${pathsFound === 0 ? 0 : (totalWaypoints / pathsFound).toFixed(1)}`,
+    `latence: p50=${percentile(latenciesMs, 0.5).toFixed(2)}ms p95=${p95.toFixed(2)}ms max=${percentile(latenciesMs, 1).toFixed(2)}ms`,
+    `budget: pathfindingMsPerRequestP95≤${DEFAULT_PERFORMANCE_BUDGETS.pathfindingMsPerRequestP95}ms`,
+    `durée totale: ${(elapsedMs / 1000).toFixed(1)} s`,
+    `tas JS: ${startHeap} Mo → ${heapUsedMb()} Mo`,
+  ]);
 }
 
 function percentile(values: readonly number[], fraction: number): number {
@@ -216,7 +238,9 @@ function checkPath(
       continue;
     }
     if (!simulation.world.isWalkable(x, z)) {
-      anomalies.push(`requête ${requestId}: waypoint (${x.toFixed(1)}, ${z.toFixed(1)}) non praticable — chemin invalide`);
+      anomalies.push(
+        `requête ${requestId}: waypoint (${x.toFixed(1)}, ${z.toFixed(1)}) non praticable — chemin invalide`,
+      );
     }
   }
 }

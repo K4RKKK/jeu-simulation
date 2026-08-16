@@ -70,6 +70,16 @@ humains doivent découvrir ; elle n'en reçoit que la projection (ex. `foodKcal`
 
 ## Installation
 
+### Version Windows prête à jouer
+
+Télécharger l'archive `civilisation-emergente-v1.0.0-windows-x64.zip` depuis la
+[release GitHub](https://github.com/K4RKKK/jeu-simulation/releases), la décompresser puis
+double-cliquer sur **`Lancer le jeu.cmd`**. Le navigateur s'ouvre automatiquement et les
+mondes sont enregistrés dans le dossier `saves` de la distribution. Node.js et pnpm ne
+sont pas nécessaires pour cette version.
+
+### Développement
+
 Prérequis : **Node ≥ 20.11** et **pnpm 9**.
 
 ```bash

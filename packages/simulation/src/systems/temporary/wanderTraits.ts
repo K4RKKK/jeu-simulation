@@ -23,7 +23,6 @@ export function attemptCountForPerseverance(
   config: Pick<WanderConfig, 'maxTargetAttempts' | 'attemptScaleMin' | 'attemptScaleMax'>,
 ): number {
   const scaled =
-    config.maxTargetAttempts *
-    lerp(config.attemptScaleMin, config.attemptScaleMax, perseverance);
+    config.maxTargetAttempts * lerp(config.attemptScaleMin, config.attemptScaleMax, perseverance);
   return Math.max(1, Math.round(scaled));
 }
