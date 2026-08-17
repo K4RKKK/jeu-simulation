@@ -25,12 +25,24 @@ export const CONTROL_LABELS: Readonly<Record<ControlAction, string>> = {
 
 export const CONTROL_ACTIONS = Object.keys(CONTROL_LABELS) as ControlAction[];
 
+/**
+ * `KeyboardEvent.code` nomme la POSITION physique de la touche sur un clavier QWERTY de
+ * référence, jamais ce qui est réellement imprimé dessus — indépendant de la disposition
+ * réelle de l'utilisateur. Sur un clavier AZERTY (celui visé ici, comme tout le reste de
+ * l'interface en français), les touches Z et A sont physiquement à l'emplacement QWERTY
+ * de W et Q (et réciproquement) : coder `KeyZ` pour « avancer » revient donc à écouter la
+ * touche physique portant un W, jamais la touche imprimée « Z ». D'où le bug signalé :
+ * Z n'avançait pas, et la rotation semblait inversée avec le strafe latéral.
+ *
+ * Correspondance code physique → touche imprimée sur AZERTY : KeyQ→A, KeyW→Z, KeyA→Q
+ * (S, D, E identiques sur les deux dispositions, donc inchangés).
+ */
 export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
-  forward: 'KeyZ',
+  forward: 'KeyW', // touche imprimée « Z » sur AZERTY
   backward: 'KeyS',
-  left: 'KeyQ',
+  left: 'KeyA', // touche imprimée « Q » sur AZERTY
   right: 'KeyD',
-  rotateLeft: 'KeyA',
+  rotateLeft: 'KeyQ', // touche imprimée « A » sur AZERTY
   rotateRight: 'KeyE',
   follow: 'KeyF',
   cinematic: 'KeyC',
@@ -67,7 +79,19 @@ export function resetControlSettings(): ControlSettings {
   return getControlSettings();
 }
 
+/**
+ * Les trois seules touches dont la lettre imprimée diffère entre QWERTY et AZERTY parmi
+ * celles utilisées ici (voir la doc de `DEFAULT_CONTROL_SETTINGS`) — affichées selon ce
+ * que l'utilisateur voit réellement sur son clavier, pas selon le nom de position `code`.
+ */
+const AZERTY_KEY_LABELS: Readonly<Record<string, string>> = {
+  KeyQ: 'A',
+  KeyW: 'Z',
+  KeyA: 'Q',
+};
+
 export function keyLabel(code: string): string {
+  if (code in AZERTY_KEY_LABELS) return AZERTY_KEY_LABELS[code] as string;
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   return (

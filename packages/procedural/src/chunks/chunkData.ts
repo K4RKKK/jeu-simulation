@@ -50,6 +50,13 @@ export interface ResourceSpawn {
    * récoltes cette ressource peut encore fournir.
    */
   readonly harvestServings: number;
+  /**
+   * Projection de `ResourceDefinition.renewalMode` (`content`), résolue par le spawner
+   * (`regrowWhenDepleted` si absent) — même raison que `harvestServings` : la simulation
+   * ne peut pas importer `content`, `EcologySystem` a besoin de cette seule information
+   * pour savoir si/comment cette ressource repousse.
+   */
+  readonly renewalMode: 'none' | 'replenishPartial' | 'regrowWhenDepleted';
 }
 
 /**

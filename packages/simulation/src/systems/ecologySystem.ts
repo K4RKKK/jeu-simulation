@@ -29,6 +29,12 @@ export class EcologySystem implements SimulationSystem {
       if (ctx.tick < this.eligibleTick(ctx, delta.resourceId, delta.lastModifiedTick)) continue;
       const spawn = ctx.world.findBaseResourceById(delta.resourceId, delta.ownerChunkKey);
       if (!spawn) continue;
+      // `none` : cette ressource ne repousse jamais (un minerai extrait, un arbre
+      // abattu) — l'écologie locale, aussi favorable soit-elle, n'y change rien.
+      // `replenishPartial` : uniquement depuis une récolte partielle, jamais depuis un
+      // épuisement complet — un `depleted` reste définitif pour ce type de ressource.
+      if (spawn.renewalMode === 'none') continue;
+      if (spawn.renewalMode === 'replenishPartial' && delta.state === 'depleted') continue;
       const owner = parseChunkKey(delta.ownerChunkKey);
       const chunkSize = ctx.world.generator.config.layout.chunkSizeMeters;
       const coordinate = ctx.world.regionAt(

@@ -27,6 +27,14 @@ export interface ServerConfig {
   autosaveIntervalTicks: number;
   /** Sauvegarde avant l'arrêt (SIGINT/SIGTERM) : un monde qui tourne 24/24 ne doit rien perdre. */
   saveOnShutdown: boolean;
+  /**
+   * Origines HTTP/WebSocket autorisées à appeler ce serveur — CORS et connexion WS
+   * refusent tout `Origin` absent de cette liste. Le client de production est servi par
+   * ce même Fastify (même origine, jamais soumis au CORS du navigateur) : cette liste ne
+   * sert qu'au client de développement (Vite, autre port) et à toute intégration
+   * explicitement autorisée. Une liste vide n'autorise aucune origine cross-origin.
+   */
+  trustedOrigins: readonly string[];
 }
 
 function readNumber(name: string, fallback: number): number {
@@ -63,7 +71,22 @@ export function loadServerConfig(): ServerConfig {
     // variable d'environnement directement pour permettre la désactivation explicite.
     autosaveIntervalTicks: readOptionalNumber('CIV_AUTOSAVE_INTERVAL_TICKS', 6000),
     saveOnShutdown: readBoolean('CIV_SAVE_ON_SHUTDOWN', true),
+    trustedOrigins: readOrigins('CIV_TRUSTED_ORIGINS'),
   };
+}
+
+function readOrigins(name: string): readonly string[] {
+  const raw = process.env[name];
+  if (raw !== undefined && raw.trim() !== '') {
+    return raw
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0);
+  }
+  // Défaut de développement seulement : le serveur de production sert le client depuis
+  // la même origine et n'a besoin d'autoriser personne d'autre.
+  if (process.env.NODE_ENV === 'production') return [];
+  return ['http://localhost:5173', 'http://127.0.0.1:5173'];
 }
 
 function readOptionalNumber(name: string, fallback: number): number {

@@ -11,6 +11,7 @@ import {
   FilePersistenceAdapter,
   Simulation,
   SimulationLoop,
+  WorldAlreadyExistsError,
   buildHumanProfiles,
   buildHumanStates,
   type SaveMetadata,
@@ -54,6 +55,40 @@ export class PersistenceDisabledError extends Error {
     );
     this.name = 'PersistenceDisabledError';
   }
+}
+
+/**
+ * Une image de miniature refusée : base64 mal formé, trop volumineuse, ou dont le
+ * contenu binaire ne commence pas par la signature JPEG. Le schéma réseau
+ * (`uploadThumbnailRequestSchema`) ne vérifie que « c'est une chaîne non vide » — c'est
+ * ici que le contenu réel est vérifié avant d'être écrit sur disque.
+ */
+export class InvalidThumbnailError extends Error {
+  constructor(reason: string) {
+    super(`Miniature invalide : ${reason}`);
+    this.name = 'InvalidThumbnailError';
+  }
+}
+
+/** Une miniature d'aperçu reste petite (canvas basse résolution, JPEG qualité 0.7). */
+const MAX_THUMBNAIL_BYTES = 512 * 1024;
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+
+function decodeThumbnail(jpegBase64: string): Buffer {
+  if (jpegBase64.length === 0 || jpegBase64.length % 4 !== 0 || !BASE64_PATTERN.test(jpegBase64)) {
+    throw new InvalidThumbnailError('encodage base64 mal formé.');
+  }
+  const bytes = Buffer.from(jpegBase64, 'base64');
+  if (bytes.length === 0 || bytes.length > MAX_THUMBNAIL_BYTES) {
+    throw new InvalidThumbnailError(
+      `taille (${bytes.length} octets) hors limites (max ${MAX_THUMBNAIL_BYTES}).`,
+    );
+  }
+  if (!JPEG_MAGIC.every((byte, index) => bytes[index] === byte)) {
+    throw new InvalidThumbnailError('le contenu ne commence pas par une signature JPEG.');
+  }
+  return bytes;
 }
 
 /**
@@ -279,7 +314,7 @@ export class SimulationHost {
   }): Promise<SaveMetadata> {
     if (this.persistence === null) throw new PersistenceDisabledError();
     if ((await this.listWorlds()).some((world) => (world.label ?? world.name) === options.name)) {
-      throw new Error(`Un monde nommé "${options.name}" existe déjà.`);
+      throw new WorldAlreadyExistsError(options.name);
     }
 
     const slot = `world-${randomUUID()}`;
@@ -356,7 +391,7 @@ export class SimulationHost {
         (world) => world.name !== name && (world.label ?? world.name) === newName,
       )
     ) {
-      throw new Error(`Un monde nommé "${newName}" existe déjà.`);
+      throw new WorldAlreadyExistsError(newName);
     }
     const metadata = await this.persistence.setLabel(name, newName);
     if (name === this.activeWorldName) this.activeWorldLabel = metadata.label;
@@ -366,7 +401,7 @@ export class SimulationHost {
   async duplicateWorld(name: string, newName: string): Promise<SaveMetadata> {
     if (this.persistence === null) throw new PersistenceDisabledError();
     if ((await this.listWorlds()).some((world) => (world.label ?? world.name) === newName)) {
-      throw new Error(`Un monde nommé "${newName}" existe déjà.`);
+      throw new WorldAlreadyExistsError(newName);
     }
     const slot = `world-${randomUUID()}`;
     await this.persistence.duplicate(name, slot);
@@ -385,6 +420,7 @@ export class SimulationHost {
    */
   async saveWorldThumbnail(name: string, jpegBase64: string): Promise<void> {
     if (this.persistence === null) throw new PersistenceDisabledError();
+    decodeThumbnail(jpegBase64); // lève InvalidThumbnailError avant toute écriture disque.
     await this.persistence.saveThumbnail(name, jpegBase64);
   }
 
@@ -419,7 +455,9 @@ export class SimulationHost {
   addClient(socket: WebSocket): ClientSession {
     const session = new ClientSession(socket);
     this.sessions.add(session);
-    this.sendInit(session);
+    // `init` n'est envoyé qu'après un `hello` valide (voir `handleMessage`) — envoyer
+    // l'état du monde avant que le client ait annoncé sa version de protocole revenait à
+    // faire confiance à quiconque ouvre la socket, sans jamais vérifier la compatibilité.
 
     socket.on('message', (raw: unknown) => this.handleMessage(session, String(raw)));
     socket.on('close', () => this.removeClient(session));
@@ -470,6 +508,17 @@ export class SimulationHost {
     }
 
     const message = parsed.value;
+
+    // Avant le handshake, seul `hello` est légitime : un client conforme au protocole
+    // ne peut matériellement pas envoyer autre chose en premier (voir `ServerConnection`
+    // côté client). Toute autre chose ici est soit un bug, soit un client qui n'a pas
+    // suivi le protocole — dans les deux cas, la connexion se ferme plutôt que d'agir
+    // sur une simulation autoritaire pour un client jamais vérifié.
+    if (!session.handshaken && message.t !== 'hello') {
+      session.terminate(1002, 'hello required before any other message');
+      return;
+    }
+
     switch (message.t) {
       case 'hello':
         if (message.protocolVersion !== PROTOCOL_VERSION) {
@@ -478,7 +527,11 @@ export class SimulationHost {
             code: 'protocol_mismatch',
             message: `Server speaks protocol ${PROTOCOL_VERSION}, client speaks ${message.protocolVersion}`,
           });
+          session.terminate(1002, 'protocol version mismatch');
+          return;
         }
+        session.handshaken = true;
+        this.sendInit(session);
         return;
       case 'ping':
         session.send({ t: 'pong', clientTime: message.clientTime });
@@ -555,6 +608,9 @@ export class SimulationHost {
     this.loop.start();
 
     for (const client of this.sessions) {
+      // Une session pas encore "hello"-shakée recevra son `init` normalement dès qu'elle
+      // le fera — lui en envoyer un maintenant violerait l'ordre handshake → init.
+      if (!client.handshaken) continue;
       try {
         this.sendInit(client);
       } catch (error) {
@@ -642,6 +698,9 @@ export class SimulationHost {
     this.lastAutosaveTick = this.simulation.clock.currentTick;
     if (this.started) this.loop.start();
     for (const client of this.sessions) {
+      // Une session pas encore "hello"-shakée recevra son `init` normalement dès qu'elle
+      // le fera — lui en envoyer un maintenant violerait l'ordre handshake → init.
+      if (!client.handshaken) continue;
       try {
         this.sendInit(client);
       } catch (error) {

@@ -7,12 +7,19 @@ import {
   uploadThumbnailRequestSchema,
   type WorldSummary,
 } from '@civ/shared';
-import type { SaveMetadata } from '@civ/simulation';
+import {
+  InvalidWorldNameError,
+  SaveNotFoundError,
+  WorldAlreadyExistsError,
+  type SaveMetadata,
+} from '@civ/simulation';
 import Fastify, { type FastifyReply } from 'fastify';
 import type { WebSocket } from 'ws';
 import { loadServerConfig } from './config.js';
+import { isTrustedOrigin } from './net/origin.js';
 import {
   ActiveWorldConflictError,
+  InvalidThumbnailError,
   PersistenceDisabledError,
   SimulationHost,
   WorldNotFoundError,
@@ -32,29 +39,33 @@ function toWorldSummary(metadata: SaveMetadata, activeWorldName: string): WorldS
 }
 
 /**
- * Traduit les erreurs connues de `SimulationHost` en réponse HTTP — jamais une trace de
- * pile brute renvoyée au client (`WorldsApiError` de `@civ/shared`).
+ * Traduit les erreurs connues de `SimulationHost`/`FilePersistenceAdapter` en réponse
+ * HTTP — jamais une trace de pile brute renvoyée au client (`WorldsApiError` de
+ * `@civ/shared`).
+ *
+ * Seules les erreurs métier RECONNUES ci-dessous deviennent un 4xx : le joueur a
+ * effectivement fait quelque chose de corrigible (nom invalide, monde introuvable,
+ * conflit). Toute autre `Error` — disque plein, permission refusée, bug interne — reste
+ * un 500 : ce n'est jamais une faute du joueur, et un 400 l'aurait caché comme telle.
  */
 function respondWithError(reply: FastifyReply, error: unknown): void {
-  if (error instanceof WorldNotFoundError) {
+  if (error instanceof WorldNotFoundError || error instanceof SaveNotFoundError) {
     reply.code(404).send({ error: error.message });
     return;
   }
-  if (error instanceof ActiveWorldConflictError) {
+  if (error instanceof ActiveWorldConflictError || error instanceof WorldAlreadyExistsError) {
     reply.code(409).send({ error: error.message });
     return;
   }
-  if (error instanceof PersistenceDisabledError) {
+  if (
+    error instanceof PersistenceDisabledError ||
+    error instanceof InvalidWorldNameError ||
+    error instanceof InvalidThumbnailError
+  ) {
     reply.code(400).send({ error: error.message });
     return;
   }
-  if (error instanceof Error) {
-    // Erreurs de validation venant de `FilePersistenceAdapter` (nom invalide, cible
-    // déjà existante, source introuvable) — toutes des erreurs de requête, pas des
-    // pannes serveur.
-    reply.code(400).send({ error: error.message });
-    return;
-  }
+  console.error('[api] erreur interne inattendue:', error);
   reply.code(500).send({ error: 'Erreur interne du serveur.' });
 }
 
@@ -70,16 +81,19 @@ async function main(): Promise<void> {
 
   // CORS minimal pour les routes `/api/worlds*` : le client de développement (Vite,
   // port 5173) et le serveur (port 8787) sont deux origines distinctes. Fait main
-  // plutôt que via `@fastify/cors` pour ne pas ajouter de dépendance à cette étape —
-  // reflète simplement l'origine de la requête (pas d'authentification/cookies à
-  // protéger ici, ces routes ne font que lister/créer des sauvegardes nommées).
+  // plutôt que via `@fastify/cors` pour ne pas ajouter de dépendance à cette étape.
+  // Allowlist explicite (`config.trustedOrigins`) — jamais une réflexion aveugle de
+  // l'`Origin` reçu : ces routes permettent de créer/renommer/dupliquer/SUPPRIMER un
+  // monde sans authentification, une page web tierce ouverte dans le même navigateur ne
+  // doit pas pouvoir les appeler juste parce qu'elle a envoyé un en-tête `Origin`.
   // `onRequest` global s'exécute pour CHAQUE requête avant le routage, y compris les
   // `OPTIONS` de préflight pour lesquelles aucune route n'est enregistrée — sans quoi
   // elles recevraient un 404 avant même d'atteindre la logique CORS.
+  const trustedOrigins = new Set(config.trustedOrigins);
   app.addHook('onRequest', async (request, reply) => {
     const origin = request.headers.origin;
-    if (origin) {
-      reply.header('Access-Control-Allow-Origin', origin);
+    if (isTrustedOrigin(origin, request.headers.host, trustedOrigins)) {
+      reply.header('Access-Control-Allow-Origin', origin as string);
       reply.header('Vary', 'Origin');
     }
     if (request.method === 'OPTIONS') {
@@ -200,7 +214,15 @@ async function main(): Promise<void> {
     reply.send(jpeg);
   });
 
-  app.get(WS_PATH, { websocket: true }, (socket: WebSocket) => {
+  app.get(WS_PATH, { websocket: true }, (socket: WebSocket, request) => {
+    // Même allowlist que les routes HTTP : un `Origin` de confiance est requis avant
+    // d'accepter la connexion — sans quoi une page web tierce ouverte dans le même
+    // navigateur pourrait ouvrir cette socket et envoyer des commandes (le serveur est
+    // autoritaire mais n'authentifie sinon aucun client).
+    if (!isTrustedOrigin(request.headers.origin, request.headers.host, trustedOrigins)) {
+      socket.close(1008, 'origin not allowed');
+      return;
+    }
     host.addClient(socket);
   });
 

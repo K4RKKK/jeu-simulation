@@ -51,7 +51,11 @@ export const duplicateWorldRequestSchema = z.object({
  * quel, jamais de décodage/réencodage.
  */
 export const uploadThumbnailRequestSchema = z.object({
-  image: z.string().min(1),
+  // Borne large mais réelle : ~512 Ko décodés (miniature JPEG basse résolution) tiennent
+  // sous 700 000 caractères base64. La validation fine (base64 bien formé, signature
+  // JPEG) vit côté serveur (`InvalidThumbnailError`) — ceci n'est qu'un garde-fou de
+  // taille avant même de tenter de décoder quoi que ce soit.
+  image: z.string().min(1).max(700_000),
 });
 export type UploadThumbnailRequest = z.infer<typeof uploadThumbnailRequestSchema>;
 

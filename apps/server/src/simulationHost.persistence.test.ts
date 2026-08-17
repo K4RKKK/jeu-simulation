@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FilePersistenceAdapter } from '@civ/simulation';
 import type { ServerConfig } from './config.js';
-import { SimulationHost } from './simulationHost.js';
+import { InvalidThumbnailError, SimulationHost } from './simulationHost.js';
 
 function makeConfig(overrides: Partial<ServerConfig>): ServerConfig {
   return {
@@ -21,6 +21,7 @@ function makeConfig(overrides: Partial<ServerConfig>): ServerConfig {
     saveSlot: 'world',
     autosaveIntervalTicks: 0,
     saveOnShutdown: true,
+    trustedOrigins: [],
     ...overrides,
   };
 }
@@ -277,6 +278,29 @@ describe('SimulationHost — gestion des mondes (multi-sauvegardes nommées)', (
       const ephemeral = new SimulationHost(makeConfig({ saveDir: '' }));
       await expect(ephemeral.saveWorldThumbnail('anything', fakeJpegBase64)).rejects.toThrow();
       await ephemeral.stop();
+    });
+
+    it('refuse un contenu qui ne commence pas par la signature JPEG', async () => {
+      const notJpeg = Buffer.from('ceci nest pas une image').toString('base64');
+      await expect(host.saveWorldThumbnail('world', notJpeg)).rejects.toThrow(
+        InvalidThumbnailError,
+      );
+    });
+
+    it('refuse un base64 mal formé', async () => {
+      await expect(host.saveWorldThumbnail('world', 'pas-du-tout-du-base64!!!')).rejects.toThrow(
+        InvalidThumbnailError,
+      );
+    });
+
+    it('refuse une image trop volumineuse', async () => {
+      const oversized = Buffer.concat([
+        Buffer.from([0xff, 0xd8, 0xff]),
+        Buffer.alloc(600 * 1024, 0),
+      ]).toString('base64');
+      await expect(host.saveWorldThumbnail('world', oversized)).rejects.toThrow(
+        InvalidThumbnailError,
+      );
     });
   });
 });

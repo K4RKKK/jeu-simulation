@@ -7,6 +7,9 @@ import {
   isRecord,
   CorruptedSaveError,
   IncompatibleSaveFormatError,
+  InvalidWorldNameError,
+  SaveNotFoundError,
+  WorldAlreadyExistsError,
   validateSaveMetadata,
   validateSimulationSnapshot,
   type PersistenceAdapter,
@@ -99,11 +102,11 @@ export class FilePersistenceAdapter implements PersistenceAdapter {
   async setLabel(name: string, label: string): Promise<SaveMetadata> {
     assertSafeName(name);
     if (label.trim().length === 0 || label.length > 64) {
-      throw new Error('Nom de monde invalide : longueur hors limites.');
+      throw new InvalidWorldNameError('Nom de monde invalide : longueur hors limites.');
     }
     return this.withLock(name, async () => {
       const source = await this.loadSlotFiles(name, name);
-      if (source === null) throw new Error(`Sauvegarde "${name}" introuvable.`);
+      if (source === null) throw new SaveNotFoundError(name);
       const metadata: SaveMetadata = {
         ...source.metadata,
         saveId: randomUUID(),
@@ -366,11 +369,28 @@ export class FilePersistenceAdapter implements PersistenceAdapter {
     // La map ne doit jamais retenir un rejet : `withLock` propage l'erreur à SON
     // appelant via `run`, mais l'entrée stockée sert seulement à séquencer les APPELS
     // suivants, qui doivent démarrer même si celui-ci a échoué.
-    this.locks.set(
-      name,
-      run.catch(() => undefined),
-    );
-    return run;
+    const settled = run.catch(() => undefined);
+    this.locks.set(name, settled);
+    try {
+      return await run;
+    } finally {
+      // Un serveur qui tourne 24/24 verrait sinon cette Map grossir d'une entrée par
+      // slot ayant jamais existé. On ne retire l'entrée que si aucune opération plus
+      // récente ne s'est enchaînée derrière celle-ci pendant qu'elle tournait — sinon on
+      // effacerait la file d'attente d'un appelant qui vient tout juste de s'y greffer.
+      if (this.locks.get(name) === settled) this.locks.delete(name);
+    }
+  }
+
+  /**
+   * Verrouille deux noms à la fois, dans un ordre fixe (lexicographique) indépendant de
+   * l'ordre `a`/`b` passé par l'appelant. `rename(A, B)` et un `rename(B, A)` concurrent
+   * acquerraient sinon leurs deux verrous en ordre inverse l'un de l'autre — un
+   * verrou-en-croix classique. L'ordre fixe élimine cette possibilité par construction.
+   */
+  private async withTwoLocks<T>(a: string, b: string, fn: () => Promise<T>): Promise<T> {
+    const [first, second] = a < b ? [a, b] : [b, a];
+    return this.withLock(first, () => this.withLock(second, fn));
   }
 
   async list(): Promise<SaveMetadata[]> {
@@ -426,55 +446,45 @@ export class FilePersistenceAdapter implements PersistenceAdapter {
     assertSafeName(from);
     assertSafeName(to);
     if (from === to) {
-      throw new Error(`Nom de sauvegarde invalide : "${to}" est identique au nom actuel.`);
+      throw new InvalidWorldNameError(
+        `Nom de sauvegarde invalide : "${to}" est identique au nom actuel.`,
+      );
     }
-    // Verrous imbriqués sur deux noms DIFFÉRENTS : jamais de ré-entrance sur le même nom
-    // (voir la doc de `writeEnvelope`), donc pas de risque de blocage.
-    return this.withLock(from, () =>
-      this.withLock(to, async () => {
-        const source = await this.loadSlotFiles(from, from);
-        if (source === null) {
-          throw new Error(`Sauvegarde "${from}" introuvable — impossible de la renommer.`);
-        }
-        if ((await this.loadSlotFiles(to, to)) !== null) {
-          throw new Error(`Une sauvegarde nommée "${to}" existe déjà.`);
-        }
+    return this.withTwoLocks(from, to, async () => {
+      const source = await this.loadSlotFiles(from, from);
+      if (source === null) throw new SaveNotFoundError(from);
+      if ((await this.loadSlotFiles(to, to)) !== null) throw new WorldAlreadyExistsError(to);
 
-        const metadata = await this.writeUnderNewName(to, source);
-        // Suppression de l'original SEULEMENT après l'écriture réussie sous le nouveau
-        // nom : jamais les deux perdues à la fois si le processus meurt entre les deux.
-        await this.removeSlotFiles(from);
-        for (let i = 1; i <= this.backupCount; i++) await this.removeSlotFiles(`${from}.bak${i}`);
-        await this.moveThumbnailIfPresent(from, to);
-        return metadata;
-      }),
-    );
+      const metadata = await this.writeUnderNewName(to, source);
+      // Suppression de l'original SEULEMENT après l'écriture réussie sous le nouveau
+      // nom : jamais les deux perdues à la fois si le processus meurt entre les deux.
+      await this.removeSlotFiles(from);
+      for (let i = 1; i <= this.backupCount; i++) await this.removeSlotFiles(`${from}.bak${i}`);
+      await this.moveThumbnailIfPresent(from, to);
+      return metadata;
+    });
   }
 
   async duplicate(from: string, to: string): Promise<SaveMetadata> {
     assertSafeName(from);
     assertSafeName(to);
     if (from === to) {
-      throw new Error(`Nom de sauvegarde invalide : "${to}" est identique au nom source.`);
+      throw new InvalidWorldNameError(
+        `Nom de sauvegarde invalide : "${to}" est identique au nom source.`,
+      );
     }
-    return this.withLock(from, () =>
-      this.withLock(to, async () => {
-        const source = await this.loadSlotFiles(from, from);
-        if (source === null) {
-          throw new Error(`Sauvegarde "${from}" introuvable — impossible de la dupliquer.`);
-        }
-        if ((await this.loadSlotFiles(to, to)) !== null) {
-          throw new Error(`Une sauvegarde nommée "${to}" existe déjà.`);
-        }
-        const snapshot: SimulationSnapshot = { ...source.snapshot, worldId: randomUUID() };
-        const metadata = await this.writeUnderNewName(to, {
-          snapshot,
-          metadata: { ...source.metadata, snapshotHash: computeSnapshotHash(snapshot) },
-        });
-        await this.copyThumbnailIfPresent(from, to);
-        return metadata;
-      }),
-    );
+    return this.withTwoLocks(from, to, async () => {
+      const source = await this.loadSlotFiles(from, from);
+      if (source === null) throw new SaveNotFoundError(from);
+      if ((await this.loadSlotFiles(to, to)) !== null) throw new WorldAlreadyExistsError(to);
+      const snapshot: SimulationSnapshot = { ...source.snapshot, worldId: randomUUID() };
+      const metadata = await this.writeUnderNewName(to, {
+        snapshot,
+        metadata: { ...source.metadata, snapshotHash: computeSnapshotHash(snapshot) },
+      });
+      await this.copyThumbnailIfPresent(from, to);
+      return metadata;
+    });
   }
 
   /** Best-effort : l'absence de miniature n'empêche jamais un renommage/une duplication. */
@@ -571,10 +581,12 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
  */
 function assertSafeName(name: string): void {
   if (name.length === 0 || name.length > 128) {
-    throw new Error(`Nom de sauvegarde invalide : longueur (${name.length}) hors limites.`);
+    throw new InvalidWorldNameError(
+      `Nom de sauvegarde invalide : longueur (${name.length}) hors limites.`,
+    );
   }
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    throw new Error(
+    throw new InvalidWorldNameError(
       `Nom de sauvegarde invalide : "${name}" — seuls lettres, chiffres, "-", "_" sont autorisés.`,
     );
   }

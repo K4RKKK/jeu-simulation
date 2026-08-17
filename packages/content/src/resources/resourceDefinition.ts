@@ -3,6 +3,22 @@ import { rangeMembership, type SuitabilityRange } from '../range.js';
 export type ResourceCategory = 'tree' | 'shrub' | 'stone' | 'debris' | 'ground_cover';
 
 /**
+ * Politique de repousse d'une ressource, appliquée par `EcologySystem` (simulation).
+ *
+ * - `none` : ne repousse jamais (un minerai extrait, un arbre abattu — la ressource ne
+ *   doit pas revenir parce que l'écologie locale est bonne).
+ * - `replenishPartial` : ne se restaure que depuis une récolte partielle
+ *   (`remainingFraction01 < 1`), jamais depuis un épuisement complet.
+ * - `regrowWhenDepleted` : se restaure aussi bien depuis une récolte partielle qu'un
+ *   épuisement complet — comportement d'origine, adapté aux ressources alimentaires
+ *   vivantes (baies, champignons, plantes).
+ *
+ * Absent = `regrowWhenDepleted`, pour préserver le comportement existant de toutes les
+ * ressources actuelles sans migration nécessaire.
+ */
+export type ResourceRenewalMode = 'none' | 'replenishPartial' | 'regrowWhenDepleted';
+
+/**
  * Formes de rendu connues du client.
  *
  * Le client sait construire ces formes ; il ne connaît aucun identifiant de ressource.
@@ -100,6 +116,9 @@ export interface ResourceDefinition {
    * dernière portion.
    */
   readonly harvestServings?: number;
+
+  /** Voir la doc de `ResourceRenewalMode`. Absent = `regrowWhenDepleted`. */
+  readonly renewalMode?: ResourceRenewalMode;
 }
 
 export interface ResourceSuitabilityInput {

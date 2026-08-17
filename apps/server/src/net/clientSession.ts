@@ -45,6 +45,13 @@ export class ClientSession {
   interestCenter: { x: number; z: number } | null = null;
   interestRadius = 0;
 
+  /**
+   * Vrai une fois `hello` reçu avec une version de protocole compatible. Tant que c'est
+   * faux, seul `hello` (et `ping`) doit être traité — un client ne reçoit son `init` et
+   * ne peut agir sur la simulation qu'après avoir annoncé sa version.
+   */
+  handshaken = false;
+
   constructor(private readonly socket: WebSocket) {}
 
   get isOpen(): boolean {
@@ -159,5 +166,14 @@ export class ClientSession {
 
   close(): void {
     this.closed = true;
+  }
+
+  /** Ferme réellement la connexion sous-jacente — `close()` ne fait que marquer l'état
+   * local, ce qui laissait la socket ouverte côté réseau après un handshake refusé. */
+  terminate(code: number, reason: string): void {
+    this.closed = true;
+    if (this.socket.readyState === this.socket.OPEN || this.socket.readyState === this.socket.CONNECTING) {
+      this.socket.close(code, reason);
+    }
   }
 }

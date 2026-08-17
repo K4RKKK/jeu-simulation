@@ -55,6 +55,7 @@ function spawn(
     foodKcal: 0,
     foodToxicity01: 0,
     harvestServings: 1,
+    renewalMode: 'regrowWhenDepleted' as const,
   };
 }
 

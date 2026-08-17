@@ -134,6 +134,35 @@ export class CorruptedSaveError extends Error {
 }
 
 /**
+ * Nom de sauvegarde rejeté par `assertSafeName` (longueur, caractères interdits) — une
+ * erreur de requête, jamais une panne serveur. Distincte d'une `Error` générique pour que
+ * la couche HTTP (`respondWithError`) puisse la traduire en 400 sans risquer de faire de
+ * même pour une vraie erreur système (disque plein, permission refusée…).
+ */
+export class InvalidWorldNameError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'InvalidWorldNameError';
+  }
+}
+
+/** Tentative de création/renommage/duplication vers un nom déjà utilisé — 409, pas 500. */
+export class WorldAlreadyExistsError extends Error {
+  constructor(name: string) {
+    super(`Un monde nommé "${name}" existe déjà.`);
+    this.name = 'WorldAlreadyExistsError';
+  }
+}
+
+/** Sauvegarde source introuvable pour un renommage/une duplication — 404, pas 500. */
+export class SaveNotFoundError extends Error {
+  constructor(name: string) {
+    super(`Sauvegarde "${name}" introuvable.`);
+    this.name = 'SaveNotFoundError';
+  }
+}
+
+/**
  * Empreinte du contenu exact d'un `SimulationSnapshot`, indépendante de `saveId` (qui
  * identifie l'ÉVÉNEMENT d'écriture, pas le contenu). Basée sur la même sérialisation
  * `JSON.stringify` que celle réellement écrite sur disque : `JSON.stringify` est
