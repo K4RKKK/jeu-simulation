@@ -8,9 +8,48 @@
   <body data-ui-level="full">
     <canvas id="viewport"></canvas>
 
+    <div id="main-menu-screen" class="worlds-screen is-hidden">
+      <div class="main-menu-card">
+        <section class="main-menu-hero" aria-label="Menu principal">
+          <p class="main-menu-eyebrow">Civilisation émergente</p>
+          <h1>Menu principal</h1>
+          <p class="main-menu-description">
+            Reprenez une partie, chargez un monde, ou lancez une nouvelle simulation.
+          </p>
+          <p data-main-menu-status class="main-menu-status"></p>
+        </section>
+
+        <section class="main-menu-actions" aria-label="Actions principales">
+          <button type="button" data-main-continue class="worlds-primary-button">Continuer</button>
+          <button type="button" data-main-load-worlds>Charger un monde</button>
+          <button type="button" data-main-new-world>Nouveau monde</button>
+          <button type="button" data-main-options>Options</button>
+        </section>
+      </div>
+    </div>
+
+    <div id="main-menu-options-screen" class="main-menu-options-screen" aria-hidden="true">
+      <section class="main-menu-options-card" role="dialog" aria-modal="true">
+        <header>
+          <div>
+            <small>Réglages</small>
+            <h2>Options</h2>
+          </div>
+          <button type="button" data-main-options-close aria-label="Fermer">×</button>
+        </header>
+        <div id="main-menu-options-content"></div>
+      </section>
+    </div>
+
     <div id="world-select-screen" class="worlds-screen is-hidden">
       <div class="worlds-card">
-        <h1>Mes mondes</h1>
+        <div class="worlds-card__header">
+          <div>
+            <p class="worlds-eyebrow">Chargement</p>
+            <h1>Mes mondes</h1>
+          </div>
+          <button type="button" data-back class="worlds-back-button">← Menu principal</button>
+        </div>
         <div data-continue-slot></div>
         <ul data-world-list class="world-list"></ul>
         <button type="button" data-new-world class="worlds-primary-button">+ Nouveau monde</button>

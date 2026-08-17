@@ -5,7 +5,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at center, #1b2118 0%, #0c0f0a 100%);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(212, 183, 128, 0.12), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(142, 190, 136, 0.16), transparent 26%),
+    radial-gradient(ellipse at center, #1c2218 0%, #0c0f0a 100%);
   transition:
     opacity 220ms ease,
     visibility 0s linear 220ms;
@@ -36,6 +39,39 @@
   text-align: center;
 }
 
+.worlds-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.worlds-card__header h1 {
+  margin-bottom: 0;
+  text-align: left;
+}
+.worlds-eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.worlds-back-button {
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.worlds-back-button:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
 .worlds-primary-button {
   width: 100%;
   padding: 12px;
@@ -50,6 +86,160 @@
 }
 .worlds-primary-button:hover {
   filter: brightness(1.08);
+}
+
+/* ---- Menu principal -------------------------------------------------- */
+
+.main-menu-card {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.2fr) minmax(240px, 0.8fr);
+  gap: 24px;
+  width: min(920px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(160deg, rgba(19, 24, 19, 0.96), rgba(11, 14, 10, 0.98)), var(--glass-strong);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58);
+}
+
+.main-menu-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+  padding: 8px 4px 8px 0;
+}
+.main-menu-eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.main-menu-hero h1 {
+  margin: 0;
+  font-size: clamp(32px, 6vw, 54px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: #f4f0e7;
+}
+.main-menu-description {
+  max-width: 34ch;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.main-menu-status {
+  margin: 22px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(212, 183, 128, 0.2);
+  border-radius: 14px;
+  background: rgba(212, 183, 128, 0.08);
+  color: #e9d8b4;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.main-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-self: center;
+}
+.main-menu-actions button {
+  min-width: 220px;
+  padding: 13px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 620;
+  cursor: pointer;
+  transition:
+    background 130ms ease,
+    transform 130ms ease,
+    color 130ms ease;
+}
+.main-menu-actions button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+.main-menu-actions .worlds-primary-button {
+  border: 0;
+}
+
+.main-menu-options-screen {
+  position: fixed;
+  z-index: 230;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 8, 5, 0.56);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    visibility 0s linear 180ms;
+}
+.main-menu-options-screen.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.main-menu-options-card {
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(88vh, 840px);
+  overflow: hidden;
+  padding: 24px 26px 26px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--glass-strong);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58);
+}
+.main-menu-options-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.main-menu-options-card small {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.main-menu-options-card h2 {
+  margin: 4px 0 0;
+  font-size: 26px;
+}
+.main-menu-options-card [data-main-options-close] {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.main-menu-options-card [data-main-options-close]:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+.main-menu-options-card #main-menu-options-content {
+  max-height: calc(88vh - 112px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 /* ---- Mes mondes ------------------------------------------------------ */

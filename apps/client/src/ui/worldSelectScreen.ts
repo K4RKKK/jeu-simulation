@@ -6,6 +6,7 @@ export interface WorldSelectScreenCallbacks {
   onContinue: () => void;
   onActivate: (name: string) => void;
   onCreateNew: () => void;
+  onBack: () => void;
   onRename: (name: string, label: string) => void;
   onDuplicate: (name: string, label: string) => void;
   onDelete: (name: string, label: string) => void;
@@ -33,6 +34,8 @@ export class WorldSelectScreen {
   ) {
     this.listElement = requiredElement(root, '[data-world-list]');
     this.continueSlot = requiredElement(root, '[data-continue-slot]');
+    const backButton = root.querySelector<HTMLButtonElement>('[data-back]');
+    backButton?.addEventListener('click', () => callbacks.onBack());
     requiredElement<HTMLButtonElement>(root, '[data-new-world]').addEventListener('click', () =>
       callbacks.onCreateNew(),
     );
