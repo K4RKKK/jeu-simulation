@@ -1,7 +1,10 @@
 import type { EntityId, WorldId } from '@civ/shared';
 import {
   Activity,
+  CognitiveKnowledge,
+  CognitiveMemory,
   Human,
+  HumanCognition,
   InteractiveResource,
   Memory,
   Movement,
@@ -9,6 +12,9 @@ import {
   NeedsState,
   Personality,
   Transform,
+  createEmptyCognitiveKnowledge,
+  createEmptyCognitiveMemory,
+  createEmptyHumanCognition,
 } from '../components/index.js';
 import type { SimulationClockState } from '../core/clock.js';
 import type { ComponentType } from '../core/componentType.js';
@@ -56,7 +62,18 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // bumper le schéma : contrairement aux composants ou au WorldDelta, son absence ne
 // change jamais l'évolution simulée. Une sauvegarde v9 antérieure est donc restaurée
 // avec un historique vide, puis sa prochaine écriture embarque ce nouveau champ.
-export const SIMULATION_SNAPSHOT_VERSION = 9;
+// v10 : trois composants cognitifs ajoutés (`CognitiveMemory`, `CognitiveKnowledge`,
+// `HumanCognition` — Phase 3.1). Contrairement à `history`, leur absence N'EST PAS sans
+// conséquence : les systèmes qui les liront à partir de 3.2 s'attendent à ce que TOUT
+// humain les porte (attachés par `HumanFactory.create`, jamais optionnels une fois
+// vivants) — un humain restauré sans eux ferait échouer `getComponentOrThrow` au premier
+// accès. Contrairement aux bumps v5-v9 (qui rejettent l'ancienne version), celui-ci est
+// accompagné d'une migration explicite (`migrateSnapshotV9ToV10`, appelée par
+// `Simulation.restoreSnapshot`) : le contenu utile d'une sauvegarde v9 (des heures de
+// vie d'une civilisation) ne change pas, seuls trois composants vides doivent être
+// ajoutés pour chaque humain existant — un rejet pur aurait été une perte de données
+// injustifiée pour une V1 déjà distribuée aux joueurs.
+export const SIMULATION_SNAPSHOT_VERSION = 10;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -162,6 +179,9 @@ export const PERSISTED_COMPONENTS: readonly ComponentType<unknown>[] = [
   NeedsState,
   Memory,
   InteractiveResource,
+  CognitiveMemory,
+  CognitiveKnowledge,
+  HumanCognition,
 ];
 
 /**
@@ -178,6 +198,42 @@ export const INTENTIONALLY_UNPERSISTED_COMPONENT_NAMES: ReadonlySet<string> = ne
 const COMPONENT_BY_NAME: Map<string, ComponentType<unknown>> = new Map(
   PERSISTED_COMPONENTS.map((type) => [type.name, type]),
 );
+
+/**
+ * Migre un snapshot v9 vers v10 : ajoute les trois composants cognitifs (Phase 3.1),
+ * vides, pour chaque humain déjà présent — voir la doc de `SIMULATION_SNAPSHOT_VERSION`.
+ *
+ * Pure et idempotente : ne mute jamais `snapshot`, retourne toujours un nouvel objet.
+ * Si un humain porte déjà (improbable mais possible en théorie — snapshot déjà
+ * partiellement migré) une entrée pour l'un de ces composants, elle est conservée telle
+ * quelle plutôt qu'écrasée par un défaut vide.
+ */
+export function migrateSnapshotV9ToV10(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 9) {
+    throw new Error(`migrateSnapshotV9ToV10: version ${snapshot.version} inattendue (9 requis)`);
+  }
+
+  const humanIds = (snapshot.entities.components.Human ?? []).map(([id]) => id);
+
+  const backfill = (name: string, makeDefault: () => unknown): [EntityId, unknown][] => {
+    const existing = new Map(snapshot.entities.components[name] ?? []);
+    return humanIds.map((id) => [id, existing.get(id) ?? makeDefault()]);
+  };
+
+  return {
+    ...snapshot,
+    version: 10,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        CognitiveMemory: backfill('CognitiveMemory', createEmptyCognitiveMemory),
+        CognitiveKnowledge: backfill('CognitiveKnowledge', createEmptyCognitiveKnowledge),
+        HumanCognition: backfill('HumanCognition', createEmptyHumanCognition),
+      },
+    },
+  };
+}
 
 /**
  * Sérialise l'état des entités. Les composants non listés dans `PERSISTED_COMPONENTS`

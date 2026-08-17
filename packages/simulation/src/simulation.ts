@@ -20,9 +20,11 @@ import { computeConfigFingerprint } from './persistence/configFingerprint.js';
 import {
   SIMULATION_SNAPSHOT_VERSION,
   captureEntities,
+  migrateSnapshotV9ToV10,
   restoreEntities,
   type SimulationSnapshot,
 } from './persistence/simulationSnapshot.js';
+import { ForgettingSystem } from './systems/cognition/forgettingSystem.js';
 import { MovementSystem } from './systems/movementSystem.js';
 import { MetabolismSystem } from './systems/needs/metabolismSystem.js';
 import { NeedSatisfactionSystem } from './systems/needs/needSatisfactionSystem.js';
@@ -287,8 +289,12 @@ export class Simulation {
    * vérifiés — une dérive de `SimulationConfig`, comme un `walkSpeedMps` changé entre
    * la sauvegarde et le chargement, passait inaperçue).
    */
-  restoreSnapshot(snapshot: SimulationSnapshot): void {
+  restoreSnapshot(rawSnapshot: SimulationSnapshot): void {
     this.assertNotDisposed();
+    // Migration explicite (pas de rejet aveugle) : voir la doc de
+    // `SIMULATION_SNAPSHOT_VERSION` sur pourquoi v9→v10 mérite une vraie migration
+    // plutôt qu'un simple bump qui invaliderait les sauvegardes déjà distribuées.
+    const snapshot = rawSnapshot.version === 9 ? migrateSnapshotV9ToV10(rawSnapshot) : rawSnapshot;
     if (snapshot.version !== SIMULATION_SNAPSHOT_VERSION) {
       throw new Error(
         `restoreSnapshot: version ${snapshot.version} incompatible avec ${SIMULATION_SNAPSHOT_VERSION}`,
@@ -445,7 +451,9 @@ export class Simulation {
  * pathfinding, mouvement. L'ordre d'enregistrement est l'ordre d'exécution : le
  * métabolisme met à jour les besoins, la perception remplit la mémoire de ce qui a été
  * vu, la satisfaction décide depuis cette mémoire, le wander erre quand rien ne presse,
- * le pathfinding rend la cible atteignable, puis on se déplace.
+ * le pathfinding rend la cible atteignable, puis on se déplace. `ForgettingSystem`
+ * (Phase 3.2) fait vieillir la mémoire cognitive générique en fin de liste, en parallèle
+ * — elle ne pilote encore aucune décision.
  */
 export function defaultSystems(): SimulationSystem[] {
   return [
@@ -457,5 +465,6 @@ export function defaultSystems(): SimulationSystem[] {
     new MovementSystem(),
     new ResourceInteractionSystem(),
     new EcologySystem(),
+    new ForgettingSystem(),
   ];
 }

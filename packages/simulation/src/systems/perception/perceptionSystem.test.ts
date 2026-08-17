@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { Memory, Transform } from '../../components/index.js';
-import type { MemoryComponent, TransformComponent } from '../../components/index.js';
+import { CognitiveMemory, Memory, Transform } from '../../components/index.js';
+import type {
+  CognitiveMemoryComponent,
+  MemoryComponent,
+  TransformComponent,
+} from '../../components/index.js';
 import { Simulation } from '../../simulation.js';
 import { scanForShorePoint } from './perceptionModel.js';
 import { PerceptionSystem } from './perceptionSystem.js';
@@ -20,6 +24,10 @@ function perceptionSimulation(seed: string, population = 1): Simulation {
 
 function memoryOf(simulation: Simulation): MemoryComponent {
   return simulation.entities.getComponentOrThrow(simulation.humanIds()[0]!, Memory);
+}
+
+function cognitiveMemoryOf(simulation: Simulation): CognitiveMemoryComponent {
+  return simulation.entities.getComponentOrThrow(simulation.humanIds()[0]!, CognitiveMemory);
 }
 
 function transformOf(simulation: Simulation): TransformComponent {
@@ -84,6 +92,52 @@ describe('PerceptionSystem', () => {
       // La toxicité n'est jamais un souvenir : elle se découvre en mangeant.
       expect(entry).not.toHaveProperty('foodToxicity01');
     }
+    simulation.dispose();
+  });
+
+  /**
+   * Phase 3.2 : le même scan écrit AUSSI dans la mémoire cognitive générique, en
+   * parallèle de l'ancien `Memory` ci-dessus — coexistence délibérée (P3.21), pas un
+   * remplacement.
+   */
+  it('écrit aussi un souvenir spatial générique pour une ressource comestible vue', () => {
+    const simulation = perceptionSimulation('perception-cognitive-food');
+    simulation.start();
+    const spawn = standOnResource(simulation, (candidate) => candidate.foodKcal > 0);
+
+    simulation.step(6);
+
+    const spatial = cognitiveMemoryOf(simulation).spatial;
+    const entry = spatial.find((candidate) => candidate.worldRef?.resourceId === spawn.id);
+    expect(entry).toBeDefined();
+    expect(entry?.kind).toBe('resource');
+    expect(entry?.subjectConceptId).toBeDefined();
+    expect(entry?.confidence01).toBe(simulation.config.cognition.freshSpatialConfidence01);
+    simulation.dispose();
+  });
+
+  it('écrit aussi un souvenir spatial générique pour une rive vue', () => {
+    const simulation = perceptionSimulation('perception-cognitive-water');
+    simulation.start();
+    const world = simulation.world;
+    const transform = transformOf(simulation);
+    const shore = scanForShorePoint(
+      transform.x,
+      transform.z,
+      200,
+      8,
+      simulation.config.needs.search.drinkShoreDistanceM,
+      (x, z) => world.isWalkable(x, z),
+      (x, z) => world.hydrology.distanceToWaterMeters(x, z),
+    );
+    expect(shore).not.toBeNull();
+    transform.x = shore!.x;
+    transform.z = shore!.z;
+
+    simulation.step(6);
+
+    const spatial = cognitiveMemoryOf(simulation).spatial;
+    expect(spatial.some((entry) => entry.kind === 'water')).toBe(true);
     simulation.dispose();
   });
 

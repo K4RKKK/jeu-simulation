@@ -1,7 +1,12 @@
 import type { ResourceSpawn } from '@civ/procedural';
-import { Memory, Transform } from '../../components/index.js';
-import type { MemoryComponent, TransformComponent } from '../../components/index.js';
+import { CognitiveMemory, Memory, Transform } from '../../components/index.js';
+import type {
+  CognitiveMemoryComponent,
+  MemoryComponent,
+  TransformComponent,
+} from '../../components/index.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
+import { rememberSpatial } from '../../cognition/spatialMemoryModel.js';
 import { distance2D } from '../../core/math.js';
 import type { SimulationSystem, SystemUpdateContext } from '../../core/system.js';
 import {
@@ -29,6 +34,12 @@ import {
  * position et du tick. Le travail est réparti en cohortes stables sur l'ancien intervalle
  * `medium` : chaque individu conserve la même cadence maximale de perception, mais le
  * serveur n'examine plus toute la population dans le même tick.
+ *
+ * Depuis la Phase 3.2, chaque scan écrit AUSSI dans `CognitiveMemory.spatial` (mémoire
+ * générique, voir `cognition/spatialMemoryModel.ts`) — même donnée perçue, deux
+ * représentations en parallèle. `NeedSatisfactionSystem` continue de décider depuis
+ * `Memory` (ci-dessus), pas encore de `CognitiveMemory` : migration progressive
+ * délibérée (P3.21), la bascule attend l'Utility AI (3.4+).
  */
 export class PerceptionSystem implements SimulationSystem {
   readonly name = 'PerceptionSystem';
@@ -55,11 +66,14 @@ export class PerceptionSystem implements SimulationSystem {
     // jamais masquer une mutation effectuée par un autre système au tick suivant.
     const edibleByChunk = new Map<string, readonly ResourceSpawn[]>();
 
-    ctx.entities.each([Transform, Memory], (entity, transform, memory) => {
-      if (positiveModulo(entity - 1, cadenceTicks) !== activePhase) return;
-      this.perceiveWater(ctx, transform, memory, memoryConfig);
-      this.perceiveFood(ctx, transform, memory, memoryConfig, edibleByChunk);
-    });
+    ctx.entities.each(
+      [Transform, Memory, CognitiveMemory],
+      (entity, transform, memory, cognitiveMemory) => {
+        if (positiveModulo(entity - 1, cadenceTicks) !== activePhase) return;
+        this.perceiveWater(ctx, transform, memory, memoryConfig, cognitiveMemory);
+        this.perceiveFood(ctx, transform, memory, memoryConfig, edibleByChunk, cognitiveMemory);
+      },
+    );
   }
 
   private perceiveWater(
@@ -67,6 +81,7 @@ export class PerceptionSystem implements SimulationSystem {
     transform: TransformComponent,
     memory: MemoryComponent,
     config: PerceptionMemoryConfig,
+    cognitiveMemory: CognitiveMemoryComponent,
   ): void {
     const movedEnough =
       memory.lastWaterScanX === null ||
@@ -88,7 +103,19 @@ export class PerceptionSystem implements SimulationSystem {
       (x, z) => ctx.world.isWalkable(x, z),
       (x, z) => ctx.world.hydrology.distanceToWaterMeters(x, z),
     );
-    if (point) rememberWater(memory, point, ctx.tick, config);
+    if (point) {
+      rememberWater(memory, point, ctx.tick, config);
+      // Écrit EN PLUS dans la mémoire cognitive générique (Phase 3.2) — même scan, pas
+      // de travail dupliqué. `Memory` (ci-dessus) reste la seule source consultée par
+      // `NeedSatisfactionSystem` jusqu'à ce que l'Utility AI (3.4+) bascule sur celle-ci ;
+      // coexistence délibérée, voir la doc de `CognitiveMemoryComponent`.
+      rememberSpatial(
+        cognitiveMemory,
+        { kind: 'water', x: point.x, z: point.z, source: 'selfExperience' },
+        ctx.tick,
+        ctx.config.cognition,
+      );
+    }
   }
 
   private perceiveFood(
@@ -97,6 +124,7 @@ export class PerceptionSystem implements SimulationSystem {
     memory: MemoryComponent,
     config: PerceptionMemoryConfig,
     edibleByChunk: Map<string, readonly ResourceSpawn[]>,
+    cognitiveMemory: CognitiveMemoryComponent,
   ): void {
     // Bug corrigé : rescanner au changement de CHUNK plutôt qu'à la distance parcourue
     // laissait un individu « aveugle » à toute nourriture entrée dans son rayon de
@@ -151,6 +179,29 @@ export class PerceptionSystem implements SimulationSystem {
             },
             ctx.tick,
             config,
+          );
+          // `subjectConceptId = definitionId` : le type perçu (« ceci est un buisson à
+          // baies ») sert directement de concept — pas de taxonomie séparée à inventer
+          // pour la Phase 3.2, `definitionId` joue déjà ce rôle dans l'ancienne mémoire
+          // (voir la doc de `FoodMemoryEntry.definitionId`). `worldRef` est la référence
+          // technique pour revalider l'objet, jamais une connaissance en soi.
+          rememberSpatial(
+            cognitiveMemory,
+            {
+              kind: 'resource',
+              x: spawn.x,
+              z: spawn.z,
+              subjectConceptId: spawn.definitionId,
+              worldRef: {
+                type: 'resource',
+                resourceId: spawn.id,
+                ownerChunkKey: spawn.ownerChunkKey,
+                localId: spawn.localId,
+              },
+              source: 'selfExperience',
+            },
+            ctx.tick,
+            ctx.config.cognition,
           );
         }
       }

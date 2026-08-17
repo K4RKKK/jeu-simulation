@@ -1,10 +1,33 @@
 import type { ActivityKind, Sex } from '@civ/shared';
 import { defineComponent } from '../core/componentType.js';
+import { CognitiveKnowledge } from './cognitiveKnowledge.js';
+import { CognitiveMemory } from './cognitiveMemory.js';
+import { HumanCognition } from './humanCognition.js';
 import { InteractiveResource } from './interactiveResource.js';
 import { Memory } from './memory.js';
 import { Needs, NeedsState } from './needs.js';
 
-export { InteractiveResource, Memory, Needs, NeedsState };
+export {
+  CognitiveKnowledge,
+  CognitiveMemory,
+  HumanCognition,
+  InteractiveResource,
+  Memory,
+  Needs,
+  NeedsState,
+};
+export { allocateBeliefId, createEmptyCognitiveKnowledge } from './cognitiveKnowledge.js';
+export { allocateMemoryId, createEmptyCognitiveMemory } from './cognitiveMemory.js';
+export { createEmptyHumanCognition } from './humanCognition.js';
+export type { Belief, CognitiveKnowledgeComponent } from './cognitiveKnowledge.js';
+export type {
+  CognitiveMemoryComponent,
+  EpisodicMemoryEntry,
+  SocialMemoryEntry,
+  SpatialMemoryEntry,
+  WorldRef,
+} from './cognitiveMemory.js';
+export type { DecisionFactor, DecisionReason, HumanCognitionComponent } from './humanCognition.js';
 export type { InteractiveResourceComponent } from './interactiveResource.js';
 export type { FoodMemoryEntry, MemoryComponent, WaterMemoryEntry } from './memory.js';
 export type { NeedsComponent, NeedsStateComponent } from './needs.js';

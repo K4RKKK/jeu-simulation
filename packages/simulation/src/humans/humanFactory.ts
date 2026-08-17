@@ -1,12 +1,18 @@
 import type { EntityId, Sex } from '@civ/shared';
 import {
   Activity,
+  CognitiveKnowledge,
+  CognitiveMemory,
   Human,
+  HumanCognition,
   Memory,
   Movement,
   Needs,
   Personality,
   Transform,
+  createEmptyCognitiveKnowledge,
+  createEmptyCognitiveMemory,
+  createEmptyHumanCognition,
   type PersonalityComponent,
 } from '../components/index.js';
 import type { SimulationConfig } from '../config/simulationConfig.js';
@@ -143,6 +149,12 @@ export class HumanFactory {
       lastWaterScanX: null,
       lastWaterScanZ: null,
     });
+
+    // Squelette cognitif (Phase 3.1) : créé vide, comme `Memory` ci-dessus — rempli par
+    // les systèmes de perception/expérience/décision à partir de la sous-phase 3.2.
+    entities.addComponent(entity, CognitiveMemory, createEmptyCognitiveMemory());
+    entities.addComponent(entity, CognitiveKnowledge, createEmptyCognitiveKnowledge());
+    entities.addComponent(entity, HumanCognition, createEmptyHumanCognition());
 
     events.emit('HumanBorn', { tick: clock.currentTick, entity, name, ageYears });
     return entity;

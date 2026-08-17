@@ -256,6 +256,35 @@ export interface PerceptionConfig {
   maxWaterEntries: number;
 }
 
+/**
+ * Mémoire spatiale générique (Phase 3.2) — voir `CognitiveMemoryComponent`.
+ *
+ * `PerceptionSystem` écrit un souvenir « frais » (`freshSpatialConfidence01`/
+ * `freshSpatialPrecisionM`) à chaque perception ; `ForgettingSystem` (fréquence
+ * `verySlow`) recalcule ensuite `confidence01`/`precisionM` comme une fonction ABSOLUE
+ * du temps écoulé depuis `lastSeenTick` — jamais un décrément appliqué passe après
+ * passe, pour rester exact indépendamment de la fréquence à laquelle `ForgettingSystem`
+ * a effectivement tourné (elle-même liée à `scheduler.intervals.verySlow`, un réglage
+ * partagé par d'autres systèmes). Un souvenir revu régulièrement reste net (`rememberSpatial`
+ * réinitialise `lastSeenTick`) ; un souvenir ancien s'estompe puis se purge.
+ */
+export interface CognitionConfig {
+  /** Confiance attribuée à un souvenir spatial au moment où il est perçu. */
+  freshSpatialConfidence01: number;
+  /** Imprécision (mètres) attribuée à un souvenir spatial fraîchement perçu. */
+  freshSpatialPrecisionM: number;
+  /** Secondes de jeu après lesquelles la confiance d'un souvenir non revu est divisée par deux. */
+  spatialConfidenceHalfLifeSeconds: number;
+  /** Mètres d'imprécision ajoutés par seconde de jeu écoulée depuis la dernière observation. */
+  spatialPrecisionGrowthPerSecondM: number;
+  /** Plafond de `precisionM` : au-delà, un souvenir est déjà pratiquement inutilisable. */
+  maxSpatialPrecisionM: number;
+  /** En dessous de ce seuil, un souvenir spatial est purgé plutôt que conservé flou. */
+  minSpatialConfidence01: number;
+  /** Nombre maximal de souvenirs spatiaux par humain (le moins fiable est oublié en premier). */
+  maxSpatialEntries: number;
+}
+
 export interface SchedulerConfig {
   /** Nombre de ticks entre deux exécutions, par fréquence. */
   intervals: Record<SystemFrequency, number>;
@@ -319,6 +348,7 @@ export interface SimulationConfig {
   wander: WanderConfig;
   needs: NeedsConfig;
   perception: PerceptionConfig;
+  cognition: CognitionConfig;
   pathfinding: PathfindingConfig;
   scheduler: SchedulerConfig;
   network: NetworkConfig;
@@ -456,6 +486,24 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     waterMemoryTtlSeconds: 7200,
     maxFoodEntries: 16,
     maxWaterEntries: 4,
+  },
+  cognition: {
+    freshSpatialConfidence01: 1,
+    freshSpatialPrecisionM: 1,
+    // 30 min de jeu pour tomber à confiance moitié sans être revu ; à ce rythme, un
+    // souvenir jamais renforcé passe sous `minSpatialConfidence01` (purge) en un peu
+    // plus de 2h de jeu — le même ordre de grandeur que les anciens TTL nourriture/eau
+    // (1h/2h), sans le couperet net d'un TTL : la dégradation est progressive.
+    spatialConfidenceHalfLifeSeconds: 1800,
+    // (50 m - 1 m) réparti sur ~2h30 de jeu (9000 s) : à l'approche de la purge, un
+    // souvenir non revu est déjà quasiment inexploitable en position, pas seulement en
+    // confiance.
+    spatialPrecisionGrowthPerSecondM: 0.0054,
+    maxSpatialPrecisionM: 50,
+    minSpatialConfidence01: 0.05,
+    // Plus généreux que l'ancien maxFoodEntries+maxWaterEntries (16+4=20) : ce tableau
+    // unique couvre désormais aussi abris, humains, dangers, lieux notables.
+    maxSpatialEntries: 24,
   },
   pathfinding: {
     // 2 m de tuile : un humain fait ~1,6 pas par tuile, la résolution suit la géographie

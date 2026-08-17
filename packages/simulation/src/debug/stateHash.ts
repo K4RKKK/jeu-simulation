@@ -1,6 +1,9 @@
 import type { EntityId } from '@civ/shared';
 import type {
   ActivityComponent,
+  CognitiveKnowledgeComponent,
+  CognitiveMemoryComponent,
+  HumanCognitionComponent,
   HumanComponent,
   MemoryComponent,
   MovementComponent,
@@ -11,7 +14,10 @@ import type {
 } from '../components/index.js';
 import {
   Activity,
+  CognitiveKnowledge,
+  CognitiveMemory,
   Human,
+  HumanCognition,
   Memory,
   Movement,
   Needs,
@@ -59,6 +65,9 @@ interface CanonicalHuman {
   readonly needs: NeedsComponent | null;
   readonly needsState: NeedsStateComponent | null;
   readonly memory: MemoryComponent | null;
+  readonly cognitiveMemory: CognitiveMemoryComponent | null;
+  readonly cognitiveKnowledge: CognitiveKnowledgeComponent | null;
+  readonly cognition: HumanCognitionComponent | null;
 }
 
 /**
@@ -77,8 +86,11 @@ interface CanonicalHuman {
  * une `NeedsState` différente (plan en cours) et passer quand même pour
  * « identiques ». Cette version couvre : RNG (tous les streams), l'ordonnanceur,
  * `WorldDelta` (ressources + sentiers), et par entité : `Transform`, `Movement`
- * (vitesse, cible), `Activity`, `Personality`, `Needs`, `NeedsState` (plan en cours) et
- * `Memory` (souvenirs et positions de scan).
+ * (vitesse, cible), `Activity`, `Personality`, `Needs`, `NeedsState` (plan en cours),
+ * `Memory` (souvenirs et positions de scan), et depuis la Phase 3.1 : `CognitiveMemory`,
+ * `CognitiveKnowledge`, `HumanCognition` — sans quoi deux croyances ou souvenirs
+ * cognitifs différents pourraient produire le même hash, exactement le faux positif déjà
+ * corrigé une fois pour l'ancien `Memory`.
  *
  * **Volontairement exclus** : `Movement.waypoints`/`pathPendingFor`/`pathRequestId` — un
  * cache de calcul du `PathfindingSystem`, pas un état persisté (`restoreSnapshot` les
@@ -131,6 +143,9 @@ function canonicalStateFromSimulation(simulation: Simulation): CanonicalState {
       needs: simulation.entities.getComponent(id, Needs) ?? null,
       needsState: simulation.entities.getComponent(id, NeedsState) ?? null,
       memory: simulation.entities.getComponent(id, Memory) ?? null,
+      cognitiveMemory: simulation.entities.getComponent(id, CognitiveMemory) ?? null,
+      cognitiveKnowledge: simulation.entities.getComponent(id, CognitiveKnowledge) ?? null,
+      cognition: simulation.entities.getComponent(id, HumanCognition) ?? null,
     };
   });
 
@@ -157,6 +172,9 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
   const needsById = componentMap<NeedsComponent>('Needs');
   const needsStateById = componentMap<NeedsStateComponent>('NeedsState');
   const memoryById = componentMap<MemoryComponent>('Memory');
+  const cognitiveMemoryById = componentMap<CognitiveMemoryComponent>('CognitiveMemory');
+  const cognitiveKnowledgeById = componentMap<CognitiveKnowledgeComponent>('CognitiveKnowledge');
+  const cognitionById = componentMap<HumanCognitionComponent>('HumanCognition');
 
   const getOrThrow = <T>(map: Map<EntityId, T>, id: EntityId, name: string): T => {
     const value = map.get(id);
@@ -178,6 +196,9 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
       needs: needsById.get(id) ?? null,
       needsState: needsStateById.get(id) ?? null,
       memory: memoryById.get(id) ?? null,
+      cognitiveMemory: cognitiveMemoryById.get(id) ?? null,
+      cognitiveKnowledge: cognitiveKnowledgeById.get(id) ?? null,
+      cognition: cognitionById.get(id) ?? null,
     }));
 
   return {
@@ -235,6 +256,9 @@ function fnv1aHashState(state: CanonicalState): string {
     needs,
     needsState,
     memory,
+    cognitiveMemory,
+    cognitiveKnowledge,
+    cognition,
   } of state.humans) {
     write(
       [
@@ -318,6 +342,60 @@ function fnv1aHashState(state: CanonicalState): string {
           `${memory.lastFoodScanZ === null ? 'n' : q(memory.lastFoodScanZ)}|` +
           `${memory.lastWaterScanX === null ? 'n' : q(memory.lastWaterScanX)},` +
           `${memory.lastWaterScanZ === null ? 'n' : q(memory.lastWaterScanZ)}`,
+      );
+    }
+
+    if (cognitiveMemory) {
+      // Phase 3.1 : toujours vide pour l'instant (aucun système n'y écrit encore), mais
+      // couvert dès maintenant — voir le commentaire de tête sur le faux positif que ça
+      // évite dès qu'un écrivain existera (3.2+).
+      const spatial = cognitiveMemory.spatial
+        .map(
+          (entry) =>
+            `${entry.id}:${entry.kind}@${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}:` +
+            `${q(entry.confidence01)}:${q(entry.precisionM)}:${entry.source}:` +
+            `${entry.subjectConceptId ?? 'n'}:` +
+            `${entry.worldRef ? `${entry.worldRef.resourceId}:${entry.worldRef.ownerChunkKey}:${entry.worldRef.localId}` : 'n'}`,
+        )
+        .join(';');
+      const episodic = cognitiveMemory.episodic
+        .map(
+          (entry) =>
+            `${entry.id}:${entry.tick}:${entry.eventType}:${entry.actors.join(',')}:` +
+            `${entry.subjectConcept ?? 'n'}:${entry.x === undefined ? 'n' : q(entry.x)}:` +
+            `${entry.z === undefined ? 'n' : q(entry.z)}:${entry.outcome}:${q(entry.emotionalStrength01)}`,
+        )
+        .join(';');
+      const social = cognitiveMemory.social
+        .map(
+          (entry) =>
+            `${entry.id}:${entry.humanId}:${q(entry.trust01)}:${q(entry.familiarity01)}:${entry.lastContactTick}`,
+        )
+        .join(';');
+      write(`cm:${entity}:${cognitiveMemory.nextMemoryId}|${spatial}|${episodic}|${social}`);
+    }
+
+    if (cognitiveKnowledge) {
+      const beliefs = cognitiveKnowledge.beliefs
+        .map(
+          (belief) =>
+            `${belief.id}:${belief.subjectConcept}:${belief.property}:${belief.value}:` +
+            `${q(belief.confidence01)}:${belief.evidenceCount}:${belief.lastUpdatedTick}`,
+        )
+        .join(';');
+      write(`ck:${entity}:${cognitiveKnowledge.nextBeliefId}|${beliefs}`);
+    }
+
+    if (cognition) {
+      const factors = (cognition.decisionReason?.factors ?? [])
+        .map(
+          (factor) =>
+            `${factor.code}:${factor.value === undefined ? 'n' : q(factor.value)}:` +
+            `${factor.targetEntityId ?? 'n'}:${factor.conceptId ?? 'n'}`,
+        )
+        .join(',');
+      write(
+        `hc:${entity}:${cognition.activeGoalId ?? 'n'}|${cognition.decisionReason?.code ?? 'n'}|${factors}`,
       );
     }
   }
