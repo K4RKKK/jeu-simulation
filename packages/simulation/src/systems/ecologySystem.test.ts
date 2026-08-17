@@ -33,10 +33,37 @@ function firstResource(simulation: Simulation): ResourceSpawn {
   throw new Error('Aucune ressource dans le monde de test');
 }
 
+/**
+ * Certaines ressources par défaut (pierre, arbres, bois mort…) portent maintenant
+ * `renewalMode: 'none'` et ne repoussent jamais (voir `defaultResources.ts`) — les tests
+ * qui vérifient la repousse elle-même ont besoin d'une ressource qui repousse
+ * effectivement, pas de la première trouvée au hasard.
+ */
+function firstRenewableResource(simulation: Simulation): ResourceSpawn {
+  for (const coordinate of simulation.world.bounds.allChunks()) {
+    const spawn = simulation.world.generator
+      .generateChunk(coordinate)
+      .resources.find((candidate) => candidate.renewalMode === 'regrowWhenDepleted');
+    if (spawn) return spawn;
+  }
+  throw new Error('Aucune ressource renouvelable dans le monde de test');
+}
+
+/** Symétrique de `firstRenewableResource` : une ressource qui ne repousse jamais. */
+function firstNonRenewableResource(simulation: Simulation): ResourceSpawn {
+  for (const coordinate of simulation.world.bounds.allChunks()) {
+    const spawn = simulation.world.generator
+      .generateChunk(coordinate)
+      .resources.find((candidate) => candidate.renewalMode === 'none');
+    if (spawn) return spawn;
+  }
+  throw new Error('Aucune ressource non renouvelable dans le monde de test');
+}
+
 describe('EcologySystem', () => {
   it('fait réellement repousser une ressource épuisée et journalise resource:added', () => {
     const simulation = ecologySimulation('ecology-regrowth');
-    const spawn = firstResource(simulation);
+    const spawn = firstRenewableResource(simulation);
     simulation.world.recordResourceRemoval(
       spawn.id,
       spawn.ownerChunkKey,
@@ -64,6 +91,26 @@ describe('EcologySystem', () => {
     simulation.dispose();
   });
 
+  it('ne fait jamais repousser une ressource dont renewalMode vaut "none"', () => {
+    const simulation = ecologySimulation('ecology-no-renewal');
+    const spawn = firstNonRenewableResource(simulation);
+    simulation.world.recordResourceRemoval(
+      spawn.id,
+      spawn.ownerChunkKey,
+      spawn.localId,
+      spawn.x,
+      spawn.z,
+      0,
+    );
+    simulation.world.journal.consumeRemovals();
+
+    simulation.step(simulation.config.scheduler.intervals.verySlow * 10);
+
+    expect(simulation.world.delta.get(spawn.id)?.state).toBe('depleted');
+    expect(simulation.world.journal.consumeResourceAdditions()).toEqual([]);
+    simulation.dispose();
+  });
+
   it('ne fait jamais repousser une ressource supprimée définitivement', () => {
     const simulation = ecologySimulation('ecology-removed');
     const spawn = firstResource(simulation);
@@ -78,7 +125,7 @@ describe('EcologySystem', () => {
 
   it('régénère aussi une ressource seulement partiellement récoltée', () => {
     const simulation = ecologySimulation('ecology-partial-regrowth');
-    const spawn = firstResource(simulation);
+    const spawn = firstRenewableResource(simulation);
     simulation.world.delta.patch(
       spawn.id,
       spawn.ownerChunkKey,

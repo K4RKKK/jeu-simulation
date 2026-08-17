@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   const trustedOrigins = new Set(config.trustedOrigins);
   app.addHook('onRequest', async (request, reply) => {
     const origin = request.headers.origin;
-    if (isTrustedOrigin(origin, request.headers.host, trustedOrigins)) {
+    if (isTrustedOrigin(origin, trustedOrigins)) {
       reply.header('Access-Control-Allow-Origin', origin as string);
       reply.header('Vary', 'Origin');
     }
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
     // d'accepter la connexion — sans quoi une page web tierce ouverte dans le même
     // navigateur pourrait ouvrir cette socket et envoyer des commandes (le serveur est
     // autoritaire mais n'authentifie sinon aucun client).
-    if (!isTrustedOrigin(request.headers.origin, request.headers.host, trustedOrigins)) {
+    if (!isTrustedOrigin(request.headers.origin, trustedOrigins)) {
       socket.close(1008, 'origin not allowed');
       return;
     }

@@ -172,7 +172,10 @@ export class ClientSession {
    * local, ce qui laissait la socket ouverte côté réseau après un handshake refusé. */
   terminate(code: number, reason: string): void {
     this.closed = true;
-    if (this.socket.readyState === this.socket.OPEN || this.socket.readyState === this.socket.CONNECTING) {
+    if (
+      this.socket.readyState === this.socket.OPEN ||
+      this.socket.readyState === this.socket.CONNECTING
+    ) {
       this.socket.close(code, reason);
     }
   }

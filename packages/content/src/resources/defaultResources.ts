@@ -34,6 +34,9 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     moisture: { min: 0.4, max: 1, tolerance: 0.25 },
     elevation: { min: 0.34, max: 0.76, tolerance: 0.12 },
     interactive: true,
+    // Un arbre abattu ne repousse pas au même endroit — pas d'écologie annuelle de
+    // repeuplement forestier pour l'instant, seulement le renouvellement du vivant.
+    renewalMode: 'none',
   },
   {
     id: 'tree_conifer',
@@ -58,6 +61,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     temperature: { min: 0, max: 0.62, tolerance: 0.2 },
     elevation: { min: 0.48, max: 0.9, tolerance: 0.18 },
     interactive: true,
+    renewalMode: 'none',
   },
   {
     id: 'bush',
@@ -87,6 +91,9 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     slope: { min: 0, max: 0.4, tolerance: 0.2 },
     moisture: { min: 0.2, max: 1, tolerance: 0.2 },
     interactive: true,
+    // Sans propriété alimentaire : ce qu'on y prélève (bois, fibre) ne repousse pas
+    // au même endroit, contrairement à un buisson à baies.
+    renewalMode: 'none',
   },
   {
     id: 'berry_bush',
@@ -114,6 +121,9 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     food: { nutritionKcal: 43, waterContent01: 0.85, toxicity01: 0 },
     // Un buisson porte plusieurs poignées de baies : trois visites avant qu'il soit nu.
     harvestServings: 3,
+    // Plante vivante : de nouvelles baies poussent, que le buisson ait été vidé ou
+    // seulement partiellement cueilli.
+    renewalMode: 'regrowWhenDepleted',
   },
   {
     id: 'mushroom',
@@ -140,6 +150,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     interactive: true,
     // Toxicité réelle et non nulle : c'est la vérité du monde, pas ce qu'un humain en sait.
     food: { nutritionKcal: 22, waterContent01: 0.9, toxicity01: 0.45 },
+    renewalMode: 'regrowWhenDepleted',
   },
   {
     id: 'stone',
@@ -168,6 +179,8 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     },
     rockiness: { min: 0.25, max: 1, tolerance: 0.3 },
     interactive: true,
+    // Un minéral extrait ne repousse jamais, quelle que soit l'écologie locale.
+    renewalMode: 'none',
   },
   {
     id: 'flint',
@@ -191,6 +204,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     rockiness: { min: 0.5, max: 1, tolerance: 0.25 },
     elevation: { min: 0.45, max: 1, tolerance: 0.2 },
     interactive: true,
+    renewalMode: 'none',
   },
   {
     id: 'dead_branch',
@@ -213,6 +227,9 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     vegetation: { min: 0.4, max: 1, tolerance: 0.25 },
     slope: { min: 0, max: 0.4, tolerance: 0.2 },
     interactive: true,
+    // Une branche ramassée ne repousse pas — seul un nouveau bois mort tombé ailleurs
+    // pourrait apparaître, ce que l'écologie ne simule pas encore.
+    renewalMode: 'none',
   },
   {
     id: 'dry_grass',
@@ -289,6 +306,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     food: { nutritionKcal: 628, waterContent01: 0.05, toxicity01: 0 },
     // Un noisetier porte assez de noisettes pour plusieurs cueillettes successives.
     harvestServings: 4,
+    renewalMode: 'regrowWhenDepleted',
   },
   {
     id: 'willow',
@@ -315,6 +333,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     moisture: { min: 0.7, max: 1, tolerance: 0.15 },
     slope: { min: 0, max: 0.2, tolerance: 0.12 },
     interactive: true,
+    renewalMode: 'none',
   },
   {
     id: 'fern',
@@ -366,6 +385,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     interactive: true,
     // Intoxication forte : c'est la vérité du monde, pas ce qu'un humain en sait.
     food: { nutritionKcal: 30, waterContent01: 0.9, toxicity01: 0.8 },
+    renewalMode: 'regrowWhenDepleted',
   },
   {
     id: 'amanita_phalloides',
@@ -392,6 +412,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     slope: { min: 0, max: 0.25, tolerance: 0.12 },
     interactive: true,
     food: { nutritionKcal: 25, waterContent01: 0.9, toxicity01: 0.95 },
+    renewalMode: 'regrowWhenDepleted',
   },
   {
     id: 'cattail',
@@ -416,5 +437,6 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     interactive: true,
     // Rhizome farineux : l'amidon des marais, comestible toute l'année.
     food: { nutritionKcal: 130, waterContent01: 0.75, toxicity01: 0 },
+    renewalMode: 'regrowWhenDepleted',
   },
 ];
