@@ -1,6 +1,7 @@
 import type { EntityId } from '@civ/shared';
 import type {
   ActivityComponent,
+  Belief,
   CognitiveKnowledgeComponent,
   CognitiveMemoryComponent,
   HumanCognitionComponent,
@@ -314,34 +315,26 @@ function fnv1aHashState(state: CanonicalState): string {
       write(
         `ns:${entity}:${needsState.action}:${qOrNull(needsState.targetX)}:${qOrNull(needsState.targetZ)}:` +
           `${needsState.resourceId ?? 'n'}:${needsState.resourceOwnerChunkKey ?? 'n'}:` +
-          `${needsState.resourceLocalId ?? 'n'}:${needsState.untilTick}:${q(needsState.mealMaxGain)}:` +
-          `${needsState.poisoningUntilTick}:${q(needsState.poisoningToxicity01)}:${needsState.pathFailedAtTick}`,
+          `${needsState.resourceLocalId ?? 'n'}:${needsState.resourceConceptId ?? 'n'}:` +
+          `${needsState.untilTick}:${q(needsState.mealMaxGain)}:` +
+          `${needsState.poisoningUntilTick}:${q(needsState.poisoningToxicity01)}:` +
+          `${needsState.currentMealCausedPoisoning ? 1 : 0}:${needsState.pathFailedAtTick}`,
       );
     }
 
     if (memory) {
-      // Tous les champs de `FoodMemoryEntry` participent : deux individus qui se
-      // souviennent de la même position/kcal mais d'un `definitionId`, `ownerChunkKey`
-      // ou `localId` différent ont des souvenirs réellement distincts (le premier
-      // détermine le comportement d'évitement après empoisonnement, les deux derniers
-      // l'adresse réseau utilisée pour retrouver la ressource) — les omettre du hash
-      // masquerait cette divergence.
-      const food = memory.food
-        .map(
-          (entry) =>
-            `${entry.resourceId}:${entry.definitionId}:${entry.ownerChunkKey}:${entry.localId}@` +
-            `${q(entry.x)},${q(entry.z)}:${q(entry.foodKcal)}:${entry.lastSeenTick}`,
-        )
-        .join(';');
-      const water = memory.water
-        .map((entry) => `${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}`)
-        .join(';');
+      // Phase 3.5 : `Memory` ne porte plus que les positions du dernier scan — les
+      // souvenirs eux-mêmes (rives, ressources) sont hachés via `CognitiveMemory`
+      // ci-dessous. Ces positions gouvernent le seuil de rescan de `PerceptionSystem` :
+      // deux individus dont l'un a rescanné plus récemment n'ont pas le même futur
+      // (le prochain rescan tombe à un moment différent), les omettre masquerait cette
+      // divergence.
       write(
-        `m:${entity}:${food}|${water}|` +
+        `m:${entity}:` +
           `${memory.lastFoodScanX === null ? 'n' : q(memory.lastFoodScanX)},` +
-          `${memory.lastFoodScanZ === null ? 'n' : q(memory.lastFoodScanZ)}|` +
+          `${memory.lastFoodScanZ === null ? 'n' : q(memory.lastFoodScanZ)},${memory.lastFoodScanTick ?? 'n'}|` +
           `${memory.lastWaterScanX === null ? 'n' : q(memory.lastWaterScanX)},` +
-          `${memory.lastWaterScanZ === null ? 'n' : q(memory.lastWaterScanZ)}`,
+          `${memory.lastWaterScanZ === null ? 'n' : q(memory.lastWaterScanZ)},${memory.lastWaterScanTick ?? 'n'}`,
       );
     }
 
@@ -352,10 +345,14 @@ function fnv1aHashState(state: CanonicalState): string {
       const spatial = cognitiveMemory.spatial
         .map(
           (entry) =>
-            `${entry.id}:${entry.kind}@${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}:` +
-            `${q(entry.confidence01)}:${q(entry.precisionM)}:${entry.source}:` +
-            `${entry.subjectConceptId ?? 'n'}:` +
-            `${entry.worldRef ? `${entry.worldRef.resourceId}:${entry.worldRef.ownerChunkKey}:${entry.worldRef.localId}` : 'n'}`,
+            `${entry.id}:${entry.kind}@${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}:${entry.decayAnchorTick ?? entry.lastSeenTick}:` +
+            `${q(entry.confidence01)}:${q(entry.precisionM)}:` +
+            // encodedConfidence01/encodedPrecisionM déterminent la trajectoire future de
+            // ForgettingSystem : deux souvenirs identiques aujourd'hui mais avec des
+            // baselines différentes divergeront au prochain tick de décroissance.
+            `${q(entry.encodedConfidence01)}:${q(entry.encodedPrecisionM)}:` +
+            `${entry.source}:${entry.subjectConceptId ?? 'n'}:` +
+            `${entry.worldRef ? `${entry.worldRef.resourceId}:${entry.worldRef.ownerChunkKey}:${entry.worldRef.localId}` : 'n'}:${entry.foodCandidate ? 1 : 0}`,
         )
         .join(';');
       const episodic = cognitiveMemory.episodic
@@ -376,10 +373,20 @@ function fnv1aHashState(state: CanonicalState): string {
     }
 
     if (cognitiveKnowledge) {
+      const beliefValue = (value: Belief['value']): string => {
+        switch (value.kind) {
+          case 'probability':
+            return `probability:${q(value.value01)}`;
+          case 'category':
+            return `category:${value.code}`;
+          case 'scalar':
+            return `scalar:${q(value.value)}:${value.unit ?? 'n'}`;
+        }
+      };
       const beliefs = cognitiveKnowledge.beliefs
         .map(
           (belief) =>
-            `${belief.id}:${belief.subjectConcept}:${belief.property}:${belief.value}:` +
+            `${belief.id}:${belief.subjectConcept}:${belief.property}:${beliefValue(belief.value)}:` +
             `${q(belief.confidence01)}:${belief.evidenceCount}:${belief.lastUpdatedTick}`,
         )
         .join(';');

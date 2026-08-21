@@ -3,15 +3,20 @@ import type { ResourceSpawn } from '@civ/procedural';
 import { NavGrid, PathFindingService } from '@civ/pathfinding';
 import {
   Activity,
-  Memory,
+  CognitiveKnowledge,
+  CognitiveMemory,
+  HumanCognition,
   Movement,
   Needs,
   NeedsState,
+  Personality,
   Transform,
 } from '../../components/index.js';
-import type { MemoryComponent } from '../../components/index.js';
+import type { CognitiveMemoryComponent } from '../../components/index.js';
+import { observeResource, observeShore } from '../../cognition/observationBuilder.js';
+import { rememberSpatial } from '../../cognition/spatialMemoryModel.js';
 import { Simulation } from '../../simulation.js';
-import { rememberFood, rememberWater, scanForShorePoint } from '../perception/perceptionModel.js';
+import { scanForShorePoint } from '../perception/perceptionModel.js';
 import { MovementSystem } from '../movementSystem.js';
 import { PathfindingSystem } from '../pathfinding/pathfindingSystem.js';
 import { terrainTileCostProvider } from '../pathfinding/terrainCostProvider.js';
@@ -73,14 +78,14 @@ function setNeeds(
   if (needs.energy !== undefined) component.energy = needs.energy;
 }
 
-/** Semer la mémoire d'un humain : c'est le rôle de la perception de faire ça en vrai. */
-function seedMemory(simulation: Simulation): MemoryComponent {
-  return simulation.entities.getComponentOrThrow(simulation.humanIds()[0]!, Memory);
+/** Semer la mémoire cognitive d'un humain : c'est le rôle de la perception en vrai. */
+function seedCognition(simulation: Simulation): CognitiveMemoryComponent {
+  return simulation.entities.getComponentOrThrow(simulation.humanIds()[0]!, CognitiveMemory);
 }
 
 /**
  * Trouve une ressource comestible dans le monde (génération directe, comme le ferait la
- * perception) et place l'humain dessus, puis sème le souvenir correspondant.
+ * perception) et place l'humain dessus, puis sème le souvenir cognitif correspondant.
  */
 function seedFoodUnderHuman(
   simulation: Simulation,
@@ -98,28 +103,19 @@ function seedFoodUnderHuman(
   transform.x = spawn!.x;
   transform.z = spawn!.z;
 
-  rememberFood(
-    seedMemory(simulation),
-    {
-      resourceId: spawn!.id,
-      definitionId: spawn!.definitionId,
-      ownerChunkKey: spawn!.ownerChunkKey,
-      localId: spawn!.localId,
-      x: spawn!.x,
-      z: spawn!.z,
-      foodKcal: spawn!.foodKcal,
-    },
-    simulation.clock.currentTick,
-    { foodMemoryTtlTicks: 1e9, waterMemoryTtlTicks: 1e9, maxFoodEntries: 16, maxWaterEntries: 4 },
+  rememberSpatial(
+    seedCognition(simulation),
+    observeResource(spawn!, simulation.clock.currentTick),
+    simulation.config.cognition,
   );
   return spawn!;
 }
 
 /**
  * Trouve une rive **atteignable** dans le voisinage (rayons croissants) et sème son
- * souvenir. Sans vérification d'atteignabilité, le test dépendrait de la géographie de
- * la seed : une rive derrière un lac serait « mémorisée » mais sans chemin, et l'humain
- * resterait au camp — le test échouerait pour la mauvaise raison.
+ * souvenir cognitif. Sans vérification d'atteignabilité, le test dépendrait de la
+ * géographie de la seed : une rive derrière un lac serait « mémorisée » mais sans
+ * chemin, et l'humain resterait au camp — le test échouerait pour la mauvaise raison.
  */
 function seedWaterNearHuman(simulation: Simulation, radiusM: number): { x: number; z: number } {
   const world = simulation.world;
@@ -139,12 +135,11 @@ function seedWaterNearHuman(simulation: Simulation, radiusM: number): { x: numbe
     if (point === null) continue;
     if (!isReachable(simulation, { x: transform.x, z: transform.z }, point)) continue;
 
-    rememberWater(seedMemory(simulation), point, simulation.clock.currentTick, {
-      foodMemoryTtlTicks: 1e9,
-      waterMemoryTtlTicks: 1e9,
-      maxFoodEntries: 16,
-      maxWaterEntries: 4,
-    });
+    rememberSpatial(
+      seedCognition(simulation),
+      observeShore(point, simulation.clock.currentTick),
+      simulation.config.cognition,
+    );
     return point;
   }
   throw new Error(`aucune rive atteignable dans ${radiusM} m autour de la position initiale`);
@@ -161,8 +156,14 @@ describe('NeedSatisfactionSystem', () => {
     const entity = simulation.humanIds()[0]!;
     const activity = simulation.entities.getComponentOrThrow(entity, Activity);
     const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
 
     // La décision vient du souvenir, et la raison le dit (règle 12).
+    expect(cognition.decisionReason?.code).toBe('decision.drink');
+    expect(cognition.decisionReason?.factors).toContainEqual({
+      code: 'memory.water.known',
+      value: 1,
+    });
     expect(activity.reason).toContain("se souvient d'une rive");
     if (state.action === 'seekWater') {
       expect(activity.kind).toBe('walking');
@@ -194,6 +195,7 @@ describe('NeedSatisfactionSystem', () => {
     const activity = simulation.entities.getComponentOrThrow(entity, Activity);
     const movement = simulation.entities.getComponentOrThrow(entity, Movement);
     const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
 
     // La décision de se nourrir est prise, avec une raison lisible (règle 12). Selon le
     // monde, la ressource la plus proche est à portée de main (repas immédiat) ou plus
@@ -208,6 +210,11 @@ describe('NeedSatisfactionSystem', () => {
       expect(activity.kind).toBe('eat');
       expect(activity.reason).toContain('mange pour apaiser sa faim');
     }
+    expect(cognition.decisionReason?.code).toBe('decision.eat');
+    expect(cognition.decisionReason?.factors).toContainEqual({
+      code: 'memory.food.known',
+      value: 1,
+    });
     expect(state.resourceId).not.toBeNull();
     simulation.dispose();
   });
@@ -221,10 +228,35 @@ describe('NeedSatisfactionSystem', () => {
     const entity = simulation.humanIds()[0]!;
     const activity = simulation.entities.getComponentOrThrow(entity, Activity);
     const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
 
     expect(activity.kind).toBe('rest');
     expect(activity.reason).toContain('épuisé');
     expect(state.action).toBe('rest');
+    expect(cognition.decisionReason?.code).toBe('decision.rest');
+    simulation.dispose();
+  });
+
+  it('keeps exploration as the default baseline when no vital need dominates', () => {
+    const simulation = needsSystems();
+    simulation.start();
+    const entity = simulation.humanIds()[0]!;
+    const personality = simulation.entities.getComponentOrThrow(entity, Personality);
+    personality.curiosity = 0.8;
+    setNeeds(simulation, { hydration: 1, hunger: 1, energy: 1 });
+
+    simulation.step(10);
+
+    const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const activity = simulation.entities.getComponentOrThrow(entity, Activity);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
+    expect(state.action).toBe('none');
+    expect(activity.kind).toBe('idle');
+    expect(cognition.decisionReason?.code).toBe('decision.explore');
+    expect(cognition.decisionReason?.factors).toContainEqual({
+      code: 'personality.curiosity',
+      value: 0.8,
+    });
     simulation.dispose();
   });
 
@@ -256,6 +288,13 @@ describe('NeedSatisfactionSystem', () => {
     expect(stopped).toBe(true);
     expect(needs.hydration).toBeGreaterThan(0.6);
     expect(state.action).toBe('none');
+
+    // Phase 3.3 : la fin du repas d'eau doit avoir laissé un épisode dans la mémoire cognitive.
+    const memory = simulation.entities.getComponentOrThrow(entity, CognitiveMemory);
+    const drinkEpisode = memory.episodic.find((e) => e.eventType === 'water.drunk');
+    expect(drinkEpisode).toBeDefined();
+    expect(drinkEpisode?.outcome).toBe('thirst.quenched');
+    expect(drinkEpisode?.actors).toEqual([entity]);
     simulation.dispose();
   });
 
@@ -365,6 +404,42 @@ describe('NeedSatisfactionSystem', () => {
     // de manger, pas avant : la toxicité n'est jamais une connaissance préalable.
     expect(state.poisoningToxicity01).toBe(toxic.foodToxicity01);
     expect(state.poisoningUntilTick).toBeGreaterThanOrEqual(simulation.clock.currentTick);
+    simulation.dispose();
+  });
+
+  /**
+   * Phase 3.3 : un repas terminé laisse un épisode `food.eaten` avec l'outcome adéquat
+   * (`poisoning_started` si toxique, `satiety_increased` sinon). L'intensité émotionnelle
+   * d'un empoisonnement est nettement supérieure à celle d'un repas ordinaire — c'est ce
+   * qui lui permet de résister à l'éviction quand la mémoire épisodique se remplit.
+   */
+  it('écrit un épisode `food.eaten` avec un outcome d’empoisonnement pour une ressource toxique', () => {
+    const simulation = needsSystems();
+    simulation.start();
+    const toxic = seedFoodUnderHuman(simulation, (candidate) => candidate.foodToxicity01 > 0);
+    const entity = simulation.humanIds()[0]!;
+    setNeeds(simulation, { hydration: 1, hunger: 0.05 });
+
+    // Assez long pour terminer le repas (maxEatSeconds ~180 s).
+    simulation.step(400);
+
+    const memory = simulation.entities.getComponentOrThrow(entity, CognitiveMemory);
+    const foodEpisode = memory.episodic.find((e) => e.eventType === 'food.eaten');
+    expect(foodEpisode).toBeDefined();
+    expect(foodEpisode?.outcome).toBe('physiology.poisoning_started');
+    expect(foodEpisode?.subjectConcept).toBe(toxic.perceptualConceptId);
+    // Un empoisonnement est significativement plus marquant qu'un repas ordinaire (0.2).
+    expect(foodEpisode!.emotionalStrength01).toBeGreaterThan(0.5);
+    const knowledge = simulation.entities.getComponentOrThrow(entity, CognitiveKnowledge);
+    expect(knowledge.beliefs).toContainEqual({
+      id: 0,
+      subjectConcept: toxic.perceptualConceptId,
+      property: 'food.edible',
+      value: { kind: 'probability', value01: 0 },
+      confidence01: 0.5,
+      evidenceCount: 1,
+      lastUpdatedTick: foodEpisode!.tick,
+    });
     simulation.dispose();
   });
 

@@ -57,6 +57,25 @@ export interface ResourceSpawn {
    * pour savoir si/comment cette ressource repousse.
    */
   readonly renewalMode: 'none' | 'replenishPartial' | 'regrowWhenDepleted';
+  /**
+   * Projection de `ResourceDefinition.perceptualConceptId` (`content`), résolue par le
+   * spawner (`definitionId` si absent). Ce qu'un observateur RECONNAÎT, pas la vérité
+   * moteur : la perception cognitive (`PerceptionSystem`) doit lire CE champ, jamais
+   * `definitionId` directement — deux définitions différentes peuvent projeter le même
+   * `perceptualConceptId` si elles se ressemblent (voir la doc de `perceptualConceptId`
+   * dans `content`).
+   */
+  readonly perceptualConceptId: string;
+  /**
+   * Projection de `ResourceDefinition.interactive` (`content`) — indique si cet individu
+   * vaut la peine d'être mémorisé durablement. Un décor pur (`interactive: false`, ex.
+   * herbe sèche, fougère, roseau) peut être perçu et affiché, mais n'a pas sa place dans
+   * `CognitiveMemory.spatial` où chaque entrée a un coût. Seuls les individus
+   * « mémorables » (pierre, buisson à baies, arbre tombé…) entrent en mémoire durable.
+   */
+  readonly rememberable: boolean;
+  /** Affordance perceptive, distincte de `foodKcal` : un humain peut l'essayer sans connaître le résultat. */
+  readonly foodCandidate: boolean;
 }
 
 /**

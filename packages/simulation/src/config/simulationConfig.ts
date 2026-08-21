@@ -150,6 +150,15 @@ export interface WanderConfig {
  * headless. Les durées (survie, recharge) sont celles d'un adulte moyen au repos.
  */
 export interface NeedsConfig {
+  decision: {
+    epsilon: number;
+    restWeight: number;
+    drinkWeight: number;
+    eatWeight: number;
+    exploreBaseWeight: number;
+    noMemoryPenalty: number;
+    recentPoisoningWindowSeconds: number;
+  };
   hydration: {
     /** Perte d'hydratation au repos dans un climat tempéré : ~3 jours de survie. */
     drainPerSecond: number;
@@ -246,13 +255,20 @@ export interface PerceptionConfig {
    * côté.
    */
   foodRescanMoveThresholdM: number;
-  /** Durée de vie d'un souvenir de nourriture, en secondes de jeu. */
+  /** Temps maximal sans nouveau scan, mÃªme immobile. */
+  maxRescanSeconds: number;
+  /**
+   * Champs hérités de Phase 3.1-3.2 : plus lus depuis 3.5 (les souvenirs vivent dans
+   * `CognitiveMemory`, dont la capacité est réglée par `cognition.maxSpatialEntries` et
+   * la persistance par `cognition.spatialConfidenceHalfLifeSeconds`). Conservés dans la
+   * `SimulationConfig` pour ne pas changer le `configFingerprint` de sauvegardes v11
+   * existantes — un retrait cassera leur chargement (`restoreSnapshot` vérifie l'empreinte
+   * après la migration v11→v12). À supprimer lors d'un prochain bump qui incluera de
+   * toute façon un renouvellement d'empreinte.
+   */
   foodMemoryTtlSeconds: number;
-  /** Durée de vie d'un souvenir de rive, en secondes de jeu. */
   waterMemoryTtlSeconds: number;
-  /** Nombre maximal de souvenirs de nourriture (le plus ancien est oublié). */
   maxFoodEntries: number;
-  /** Nombre maximal de souvenirs de rives (le plus ancien est oublié). */
   maxWaterEntries: number;
 }
 
@@ -283,6 +299,13 @@ export interface CognitionConfig {
   minSpatialConfidence01: number;
   /** Nombre maximal de souvenirs spatiaux par humain (le moins fiable est oublié en premier). */
   maxSpatialEntries: number;
+  /**
+   * Nombre maximal d'événements épisodiques (Phase 3.3) : quand cette limite est atteinte,
+   * l'entrée d'intensité émotionnelle la plus basse est évincée en priorité — pas la plus
+   * ancienne. Un traumatisme rare (empoisonnement sévère) survit ainsi à des dizaines
+   * d'événements ordinaires (un repas de plus, une gorgée de plus).
+   */
+  maxEpisodicEntries: number;
 }
 
 export interface SchedulerConfig {
@@ -432,6 +455,15 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     cautiousMaxSlope01: 0.12,
   },
   needs: {
+    decision: {
+      epsilon: 0.05,
+      restWeight: 4.5,
+      drinkWeight: 1.4,
+      eatWeight: 0.8,
+      exploreBaseWeight: 0.5,
+      noMemoryPenalty: 0.15,
+      recentPoisoningWindowSeconds: 1800,
+    },
     hydration: {
       drainPerSecond: 1 / 259200,
       heatDrainMultiplier: 1.5,
@@ -480,8 +512,8 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     waterScanStepM: 12,
     waterRescanMoveThresholdM: 15,
     foodRescanMoveThresholdM: 15,
-    // Un buisson repéré reste en tête quelques heures ; une rive, un lieu d'importance
-    // vitale, jusqu'à une demi-journée. Ce sont des souvenirs, pas des cartes.
+    maxRescanSeconds: 60,
+    // Legacy Phase 3.1-3.2, non lus depuis 3.5 (voir le champ ci-dessus).
     foodMemoryTtlSeconds: 3600,
     waterMemoryTtlSeconds: 7200,
     maxFoodEntries: 16,
@@ -501,9 +533,20 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     spatialPrecisionGrowthPerSecondM: 0.0054,
     maxSpatialPrecisionM: 50,
     minSpatialConfidence01: 0.05,
-    // Plus généreux que l'ancien maxFoodEntries+maxWaterEntries (16+4=20) : ce tableau
-    // unique couvre désormais aussi abris, humains, dangers, lieux notables.
-    maxSpatialEntries: 24,
+    // Bug corrigé après mesure (Phase 3.2, correction immédiate) : la mémoire cognitive
+    // couvre maintenant TOUTE ressource visible, pas seulement l'alimentaire (voir la
+    // doc de `PerceptionSystem`) — une seule passe de perception près d'une forêt dense
+    // produit facilement 20 à 40 observations. À 24, l'éviction (à confiance égale, la
+    // plus ancienne part en premier) purgeait le souvenir d'eau AVANT MÊME la fin de la
+    // passe qui venait de le créer — mesuré : un souvenir d'eau créé en tout début de
+    // scan disparaissait avant le 25ᵉ arbre observé dans le MÊME tick. Ce plafond doit
+    // dépasser largement ce qu'une seule passe peut produire, tout en restant borné.
+    maxSpatialEntries: 80,
+    // Ordre de grandeur similaire à la mémoire spatiale : un humain n'est pas un journal.
+    // Un repas + une gorgée + un repos = 3 événements toutes les ~5-10 min de jeu, soit
+    // ~5h de souvenirs récents avant éviction. Les traumatismes (empoisonnements) résistent
+    // plus longtemps grâce à leur `emotionalStrength01` élevé, par construction de l'évincement.
+    maxEpisodicEntries: 64,
   },
   pathfinding: {
     // 2 m de tuile : un humain fait ~1,6 pas par tuile, la résolution suit la géographie

@@ -73,7 +73,31 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // vie d'une civilisation) ne change pas, seuls trois composants vides doivent être
 // ajoutés pour chaque humain existant — un rejet pur aurait été une perte de données
 // injustifiée pour une V1 déjà distribuée aux joueurs.
-export const SIMULATION_SNAPSHOT_VERSION = 10;
+// v11 : Phase 3.2 — deux bugs corrigés dans `SpatialMemoryEntry` et `Belief.value`.
+// (1) `encodedConfidence01`/`encodedPrecisionM` ajoutés à `SpatialMemoryEntry` : sans eux,
+// `ForgettingSystem` recalculait la confiance depuis la valeur fraîche PAR DÉFAUT
+// (`freshSpatialConfidence01`), ce qui rehaussait artificiellement un souvenir faiblement
+// encodé (ex. information sociale future, confiance 0,4) jusqu'à la valeur d'une
+// perception directe. Migration : `encodedConfidence01 = confidence01`,
+// `encodedPrecisionM = precisionM` (snapshot pris juste après l'observation — les deux
+// valeurs coïncident donc nécessairement au moment de la sauvegarde). En parallèle, les
+// sauvegardes v10 antérieures au correctif taguaient à tort une simple vision comme
+// `selfExperience` ; migration : `source === 'selfExperience'` → `'directPerception'`.
+// (2) `Belief.value` resserré de `string` à un discriminant fermé (`probability` /
+// `category` / `scalar`) : un `value: string` libre aurait fini comparé par égalité de
+// chaîne dans des dizaines de systèmes futurs avec un risque de désaccord silencieux.
+// Migration : une ancienne valeur `string` devient `{ kind: 'category', code: value }`.
+// v12 : Phase 3.5 — `MemoryComponent` réduit aux seules positions de scan
+// (`lastFoodScanX/Z`, `lastWaterScanX/Z`) ; les tableaux `food`/`water` (souvenirs
+// spécifiques nourriture/eau) ont été retirés car plus aucun consommateur : la mémoire
+// spatiale vit désormais dans `CognitiveMemory.spatial`, lue par `NeedSatisfactionSystem`.
+// Migration : les entrées Memory d'une sauvegarde v11 sont acceptées telles quelles, mais
+// `food`/`water` sont dépouillés lors de la restauration — l'information n'est PAS
+// reportée dans `CognitiveMemory` (déjà rempli à part par le PerceptionSystem de v11+, et
+// une reprojection créerait des souvenirs dupliqués sans confiance ni précision correcte).
+// Perte de fonctionnalité assumée : au chargement, la décision vitale attend un nouveau
+// scan (quelques ticks) avant d'avoir un souvenir de rive/ressource utilisable.
+export const SIMULATION_SNAPSHOT_VERSION = 13;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -230,6 +254,201 @@ export function migrateSnapshotV9ToV10(snapshot: SimulationSnapshot): Simulation
         CognitiveMemory: backfill('CognitiveMemory', createEmptyCognitiveMemory),
         CognitiveKnowledge: backfill('CognitiveKnowledge', createEmptyCognitiveKnowledge),
         HumanCognition: backfill('HumanCognition', createEmptyHumanCognition),
+      },
+    },
+  };
+}
+
+/**
+ * Migre un snapshot v10 vers v11 — deux corrections de Phase 3.2 :
+ * (1) Backfille `encodedConfidence01`/`encodedPrecisionM` depuis les valeurs courantes
+ *     de chaque `SpatialMemoryEntry` (au moment de la sauvegarde, les deux valeurs
+ *     coïncident nécessairement : le souvenir vient d'être perçu ou n'a pas encore subi
+ *     de décroissance différentielle). Corrige aussi les `source === 'selfExperience'`
+ *     écrits par erreur par le `PerceptionSystem` v10 initial (simple vision ≠ expérience
+ *     vécue) — ils deviennent `'directPerception'`.
+ * (2) Convertit les `Belief.value: string` (format libre pré-3.2) en
+ *     `{ kind: 'category', code: string }` — le discriminant fermé introduit en 3.2.
+ *
+ * Pure et idempotente : ne mute jamais `snapshot`, retourne toujours un nouvel objet.
+ */
+export function migrateSnapshotV10ToV11(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 10) {
+    throw new Error(`migrateSnapshotV10ToV11: version ${snapshot.version} inattendue (10 requis)`);
+  }
+
+  type SpatialEntryLegacy = {
+    id: number;
+    kind: string;
+    x: number;
+    z: number;
+    lastSeenTick: number;
+    confidence01: number;
+    precisionM: number;
+    encodedConfidence01?: number;
+    encodedPrecisionM?: number;
+    decayAnchorTick?: number;
+    source: string;
+    subjectConceptId?: string;
+    worldRef?: unknown;
+  };
+  type CognitiveMemoryLegacy = {
+    nextMemoryId: number;
+    spatial: SpatialEntryLegacy[];
+    episodic: unknown[];
+    social: unknown[];
+  };
+  type BeliefLegacy = {
+    id: number;
+    subjectConcept: string;
+    property: string;
+    value: { kind: string } | string;
+    confidence01: number;
+    evidenceCount: number;
+    lastUpdatedTick: number;
+  };
+  type CognitiveKnowledgeLegacy = { nextBeliefId: number; beliefs: BeliefLegacy[] };
+
+  const cogMemEntries = (snapshot.entities.components.CognitiveMemory ?? []) as unknown as [
+    EntityId,
+    CognitiveMemoryLegacy,
+  ][];
+  const migratedCogMem: [EntityId, unknown][] = cogMemEntries.map(([id, mem]) => [
+    id,
+    {
+      ...mem,
+      spatial: mem.spatial.map((entry) => ({
+        ...entry,
+        encodedConfidence01: entry.encodedConfidence01 ?? entry.confidence01,
+        encodedPrecisionM: entry.encodedPrecisionM ?? entry.precisionM,
+        // Les valeurs courantes deviennent la nouvelle baseline à l'instant du snapshot :
+        // repartir de lastSeenTick les ferait décroître une seconde fois.
+        decayAnchorTick: entry.decayAnchorTick ?? snapshot.clock.currentTick,
+        source: entry.source === 'selfExperience' ? 'directPerception' : entry.source,
+      })),
+    },
+  ]);
+
+  const cogKnowEntries = (snapshot.entities.components.CognitiveKnowledge ?? []) as unknown as [
+    EntityId,
+    CognitiveKnowledgeLegacy,
+  ][];
+  const migratedCogKnow: [EntityId, unknown][] = cogKnowEntries.map(([id, know]) => [
+    id,
+    {
+      ...know,
+      beliefs: know.beliefs.map((belief) => ({
+        ...belief,
+        value:
+          typeof belief.value === 'string'
+            ? { kind: 'category' as const, code: belief.value }
+            : belief.value,
+      })),
+    },
+  ]);
+
+  return {
+    ...snapshot,
+    version: 11,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        CognitiveMemory: migratedCogMem,
+        CognitiveKnowledge: migratedCogKnow,
+      },
+    },
+  };
+}
+
+/**
+ * Migre un snapshot v11 vers v12 (Phase 3.5) : retire `food`/`water` des entrées
+ * `Memory`, désormais réduites aux positions de scan. Voir la doc de
+ * `SIMULATION_SNAPSHOT_VERSION` pour le compromis (perte de mémoire spécifique acceptée :
+ * `CognitiveMemory` est déjà remplie et sera rescannée en quelques ticks).
+ *
+ * Pure et idempotente : ne mute jamais `snapshot`, retourne toujours un nouvel objet.
+ */
+export function migrateSnapshotV11ToV12(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 11) {
+    throw new Error(`migrateSnapshotV11ToV12: version ${snapshot.version} inattendue (11 requis)`);
+  }
+
+  type MemoryLegacy = {
+    food?: unknown[];
+    water?: unknown[];
+    lastFoodScanX: number | null;
+    lastFoodScanZ: number | null;
+    lastWaterScanX: number | null;
+    lastWaterScanZ: number | null;
+  };
+
+  const memoryEntries = (snapshot.entities.components.Memory ?? []) as unknown as [
+    EntityId,
+    MemoryLegacy,
+  ][];
+  const migratedMemory: [EntityId, unknown][] = memoryEntries.map(([id, mem]) => {
+    const { food: _f, water: _w, ...kept } = mem;
+    return [id, kept];
+  });
+
+  return {
+    ...snapshot,
+    version: 12,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        Memory: migratedMemory,
+      },
+    },
+  };
+}
+
+/** Migre v12 vers v13 : ancre explicite de décroissance et état de décision ajouté. */
+export function migrateSnapshotV12ToV13(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 12) {
+    throw new Error(`migrateSnapshotV12ToV13: version ${snapshot.version} inattendue (12 requis)`);
+  }
+  const components = snapshot.entities.components;
+  type LegacySpatial = { lastSeenTick: number; decayAnchorTick?: number; [key: string]: unknown };
+  type LegacyCognitiveMemory = { spatial: LegacySpatial[]; [key: string]: unknown };
+  type LegacyComponent = Record<string, unknown>;
+  const cognitiveMemory = (components.CognitiveMemory ?? []) as unknown as [
+    EntityId,
+    LegacyCognitiveMemory,
+  ][];
+  const memory = (components.Memory ?? []) as unknown as [EntityId, LegacyComponent][];
+  const needsState = (components.NeedsState ?? []) as unknown as [EntityId, LegacyComponent][];
+  return {
+    ...snapshot,
+    version: 13,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        CognitiveMemory: cognitiveMemory.map(([id, value]) => [
+          id,
+          {
+            ...value,
+            spatial: value.spatial.map((entry) => ({
+              ...entry,
+              decayAnchorTick: entry.decayAnchorTick ?? entry.lastSeenTick,
+            })),
+          },
+        ]),
+        Memory: memory.map(([id, value]) => [
+          id,
+          { ...value, lastFoodScanTick: null, lastWaterScanTick: null },
+        ]),
+        NeedsState: needsState.map(([id, value]) => [
+          id,
+          {
+            ...value,
+            resourceConceptId: value.resourceConceptId ?? null,
+            currentMealCausedPoisoning: value.currentMealCausedPoisoning ?? false,
+          },
+        ]),
       },
     },
   };

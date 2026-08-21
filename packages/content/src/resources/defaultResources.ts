@@ -118,6 +118,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     fertility: { min: 0.45, max: 1, tolerance: 0.22 },
     moisture: { min: 0.4, max: 0.9, tolerance: 0.2 },
     interactive: true,
+    foodCandidate: true,
     food: { nutritionKcal: 43, waterContent01: 0.85, toxicity01: 0 },
     // Un buisson porte plusieurs poignées de baies : trois visites avant qu'il soit nu.
     harvestServings: 3,
@@ -149,6 +150,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     vegetation: { min: 0.5, max: 1, tolerance: 0.2 },
     interactive: true,
     // Toxicité réelle et non nulle : c'est la vérité du monde, pas ce qu'un humain en sait.
+    foodCandidate: true,
     food: { nutritionKcal: 22, waterContent01: 0.9, toxicity01: 0.45 },
     renewalMode: 'regrowWhenDepleted',
   },
@@ -303,6 +305,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     moisture: { min: 0.35, max: 0.8, tolerance: 0.2 },
     interactive: true,
     // Graines sèches, riches en lipides : le stock d'énergie le plus dense du monde.
+    foodCandidate: true,
     food: { nutritionKcal: 628, waterContent01: 0.05, toxicity01: 0 },
     // Un noisetier porte assez de noisettes pour plusieurs cueillettes successives.
     harvestServings: 4,
@@ -384,6 +387,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     slope: { min: 0, max: 0.3, tolerance: 0.15 },
     interactive: true,
     // Intoxication forte : c'est la vérité du monde, pas ce qu'un humain en sait.
+    foodCandidate: true,
     food: { nutritionKcal: 30, waterContent01: 0.9, toxicity01: 0.8 },
     renewalMode: 'regrowWhenDepleted',
   },
@@ -411,6 +415,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     vegetation: { min: 0.6, max: 1, tolerance: 0.2 },
     slope: { min: 0, max: 0.25, tolerance: 0.12 },
     interactive: true,
+    foodCandidate: true,
     food: { nutritionKcal: 25, waterContent01: 0.9, toxicity01: 0.95 },
     renewalMode: 'regrowWhenDepleted',
   },
@@ -436,6 +441,7 @@ export const DEFAULT_RESOURCES: readonly ResourceDefinition[] = [
     slope: { min: 0, max: 0.1, tolerance: 0.08 },
     interactive: true,
     // Rhizome farineux : l'amidon des marais, comestible toute l'année.
+    foodCandidate: true,
     food: { nutritionKcal: 130, waterContent01: 0.75, toxicity01: 0 },
     renewalMode: 'regrowWhenDepleted',
   },

@@ -43,6 +43,7 @@ export interface NeedsStateComponent {
   resourceOwnerChunkKey: string | null;
   /** Adresse locale de la ressource dans son chunk propriétaire (recopiée depuis la mémoire). */
   resourceLocalId: number | null;
+  resourceConceptId: string | null;
   untilTick: number;
   /**
    * Gain de faim restant que ce repas peut encore fournir, dans [0, 1] — dérivé de
@@ -58,6 +59,7 @@ export interface NeedsStateComponent {
   poisoningUntilTick: number;
   /** Intensité des symptômes en cours (toxicité de ce qui a été ingéré). */
   poisoningToxicity01: number;
+  currentMealCausedPoisoning: boolean;
   /**
    * Posé par le `PathfindingSystem` quand le chemin vers la cible vitale n'existe pas :
    * jusqu'à ce tick, le planificateur ne retente pas la même impossibilité.

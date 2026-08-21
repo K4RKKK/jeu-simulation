@@ -140,14 +140,15 @@ export class HumanFactory {
       startedAtTick: clock.currentTick,
     });
 
-    // Un nouveau-né n'a rien vu : la mémoire se remplit par la perception.
+    // Positions de scan uniquement (Phase 3.5) : les souvenirs eux-mêmes vivent
+    // maintenant dans `CognitiveMemory`, alimenté ci-dessous.
     entities.addComponent(entity, Memory, {
-      food: [],
-      water: [],
       lastFoodScanX: null,
       lastFoodScanZ: null,
+      lastFoodScanTick: null,
       lastWaterScanX: null,
       lastWaterScanZ: null,
+      lastWaterScanTick: null,
     });
 
     // Squelette cognitif (Phase 3.1) : créé vide, comme `Memory` ci-dessus — rempli par

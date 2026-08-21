@@ -34,9 +34,9 @@ export interface DecisionReason {
 
 /**
  * État de décision/exécution de l'humain — le squelette sur lequel s'appuieront le
- * Goal system (3.7), le Planner (3.8) et l'Utility AI (3.6). `activeGoalId` reste une
- * référence opaque tant qu'aucun système Goal n'existe : `string | null`, jamais un type
- * `GoalId` inventé avant d'avoir un seul producteur/consommateur réel.
+ * Goal system, le Planner et l'Utility AI (sous-phases post-3.2). `activeGoalId` reste
+ * une référence opaque tant qu'aucun système Goal n'existe : `string | null`, jamais un
+ * type `GoalId` inventé avant d'avoir un seul producteur/consommateur réel.
  *
  * Toujours créé vide à la naissance ; personne n'écrit dedans avant la sous-phase 3.4.
  */

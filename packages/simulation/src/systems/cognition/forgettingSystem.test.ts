@@ -28,7 +28,9 @@ describe('ForgettingSystem', () => {
       lastSeenTick: 0,
       confidence01: config.freshSpatialConfidence01,
       precisionM: config.freshSpatialPrecisionM,
-      source: 'selfExperience',
+      encodedConfidence01: config.freshSpatialConfidence01,
+      encodedPrecisionM: config.freshSpatialPrecisionM,
+      source: 'directPerception',
     });
     memory.nextMemoryId = 1;
 
@@ -57,7 +59,9 @@ describe('ForgettingSystem', () => {
       lastSeenTick: 0,
       confidence01: config.freshSpatialConfidence01,
       precisionM: config.freshSpatialPrecisionM,
-      source: 'selfExperience',
+      encodedConfidence01: config.freshSpatialConfidence01,
+      encodedPrecisionM: config.freshSpatialPrecisionM,
+      source: 'directPerception',
     });
     memory.nextMemoryId = 1;
 
@@ -65,6 +69,38 @@ describe('ForgettingSystem', () => {
     simulation.step(Math.ceil(config.spatialConfidenceHalfLifeSeconds * 10));
 
     expect(memory.spatial).toHaveLength(0);
+    simulation.dispose();
+  });
+
+  it('ne réhausse jamais un souvenir encodé à confiance basse vers la confiance fraîche par défaut', () => {
+    const simulation = forgettingSimulation('forgetting-low-baseline');
+    const [human] = simulation.humanIds();
+    if (human === undefined) throw new Error('aucun humain');
+
+    const memory = simulation.entities.getComponentOrThrow(human, CognitiveMemory);
+    // Simule un souvenir reçu par transmission sociale (3.9) : encodé à confiance basse
+    // dès sa création, bien en dessous de `freshSpatialConfidence01`.
+    memory.spatial.push({
+      id: 0,
+      kind: 'water',
+      x: 0,
+      z: 0,
+      lastSeenTick: 0,
+      confidence01: 0.3,
+      precisionM: 5,
+      encodedConfidence01: 0.3,
+      encodedPrecisionM: 5,
+      source: 'socialTransmission',
+    });
+    memory.nextMemoryId = 1;
+
+    simulation.step(1); // un seul tick : quasiment aucune décroissance.
+
+    // Ne doit jamais dépasser sa confiance encodée — sans la correction, ForgettingSystem
+    // recalculait depuis `freshSpatialConfidence01` (1.0) et aurait ici RELEVÉ la
+    // confiance au lieu de la laisser quasi inchangée.
+    expect(memory.spatial[0]!.confidence01).toBeLessThanOrEqual(0.3);
+    expect(memory.spatial[0]!.confidence01).toBeCloseTo(0.3, 2);
     simulation.dispose();
   });
 

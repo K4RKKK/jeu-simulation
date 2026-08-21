@@ -21,6 +21,9 @@ import {
   SIMULATION_SNAPSHOT_VERSION,
   captureEntities,
   migrateSnapshotV9ToV10,
+  migrateSnapshotV10ToV11,
+  migrateSnapshotV11ToV12,
+  migrateSnapshotV12ToV13,
   restoreEntities,
   type SimulationSnapshot,
 } from './persistence/simulationSnapshot.js';
@@ -291,10 +294,14 @@ export class Simulation {
    */
   restoreSnapshot(rawSnapshot: SimulationSnapshot): void {
     this.assertNotDisposed();
-    // Migration explicite (pas de rejet aveugle) : voir la doc de
-    // `SIMULATION_SNAPSHOT_VERSION` sur pourquoi v9→v10 mérite une vraie migration
-    // plutôt qu'un simple bump qui invaliderait les sauvegardes déjà distribuées.
-    const snapshot = rawSnapshot.version === 9 ? migrateSnapshotV9ToV10(rawSnapshot) : rawSnapshot;
+    // Migrations explicites (pas de rejet aveugle) : voir la doc de
+    // `SIMULATION_SNAPSHOT_VERSION` sur pourquoi les migrations en chaîne v9→v10→v11→v12
+    // valent mieux qu'un simple bump qui invaliderait des sauvegardes déjà distribuées.
+    let snapshot: SimulationSnapshot = rawSnapshot;
+    if (snapshot.version === 9) snapshot = migrateSnapshotV9ToV10(snapshot);
+    if (snapshot.version === 10) snapshot = migrateSnapshotV10ToV11(snapshot);
+    if (snapshot.version === 11) snapshot = migrateSnapshotV11ToV12(snapshot);
+    if (snapshot.version === 12) snapshot = migrateSnapshotV12ToV13(snapshot);
     if (snapshot.version !== SIMULATION_SNAPSHOT_VERSION) {
       throw new Error(
         `restoreSnapshot: version ${snapshot.version} incompatible avec ${SIMULATION_SNAPSHOT_VERSION}`,
@@ -314,7 +321,20 @@ export class Simulation {
     const matchesLegacyFingerprint =
       snapshot.ecologyVersion === undefined &&
       snapshot.configFingerprint === this.legacyConfigFingerprint();
-    if (snapshot.configFingerprint !== currentFingerprint && !matchesLegacyFingerprint) {
+    // Sauvegardes antérieures à la Phase 3 (cognition absent du fingerprint) : on
+    // accepte toute origine (v9 ou v10) dont l'empreinte pré-cognition correspond —
+    // `rawSnapshot.version` (version D'ORIGINE du fichier) détermine quelle formule
+    // a pu la produire ; une sauvegarde v10 créée par le commit 2bff5af avait déjà
+    // `ecologyVersion` mais pas `cognition` dans son empreinte.
+    const matchesPreCognitionFingerprint =
+      snapshot.ecologyVersion !== undefined &&
+      snapshot.configFingerprint === this.preCognitionConfigFingerprint() &&
+      (rawSnapshot.version === 9 || rawSnapshot.version === 10);
+    if (
+      snapshot.configFingerprint !== currentFingerprint &&
+      !matchesLegacyFingerprint &&
+      !matchesPreCognitionFingerprint
+    ) {
       throw new Error(
         `restoreSnapshot: configuration incompatible (empreinte snapshot "${snapshot.configFingerprint}", ` +
           `empreinte actuelle "${currentFingerprint}") — la SimulationConfig ou la taille du monde a changé ` +
@@ -364,7 +384,8 @@ export class Simulation {
    * souvenir de bumper quoi que ce soit) :
    * - les sections de `SimulationConfig` qui régissent le comportement d'entités déjà
    *   vivantes : `time`, `environment`, `movement`, `wander`, `needs`, `perception`,
-   *   `pathfinding`, `scheduler`. Exclus délibérément :
+   *   `pathfinding`, `scheduler`, et depuis le snapshot v10, `cognition`. Exclus
+   *   délibérément :
    *   - `humans` (génération de la population initiale) : sans systèmes de naissance,
    *     cette config ne sert qu'à créer les humains jetables remplacés par
    *     `restoreEntities` — une population de secours à 15 vs 5 ne rend pas une
@@ -374,9 +395,6 @@ export class Simulation {
    *     population par défaut différait.)
    *   - `network` (cadence de diffusion réseau) : purement côté hébergement, sans effet
    *     sur l'état simulé.
-   *   - les anciennes sauvegardes v9 sans `ecologyVersion` sont comparées à
-   *     `legacyConfigFingerprint()` : elles précèdent `weather`/`ecology`, donc leur
-   *     empreinte historique ne pouvait pas contenir ces sections.
    * - `generator.fingerprintSource` (v6) : les paramètres numériques de génération
    *   (`WorldGenerationConfig` — relief, hydrologie, ressources…) ET le contenu
    *   déclaratif qui les accompagne (biomes, ressources, profils d'eau). Avant cela,
@@ -386,22 +404,42 @@ export class Simulation {
    *   `@civ/procedural` en `unknown` sérialisable justement pour que ce module n'ait
    *   jamais besoin d'importer `@civ/content` (CLAUDE.md règle 2) pour le hacher.
    * - la géométrie du monde (taille, taille de chunk).
+   *
+   * Trois formules coexistent pour couvrir trois ères historiques distinctes (un
+   * snapshot ne peut être comparé qu'à la formule utilisée au moment où il a été
+   * produit — bug visé par ce fix : `cognition` avait été ajoutée à `SimulationConfig`
+   * sans jamais entrer dans l'empreinte, une dérive de sa configuration entre deux
+   * chargements passait inaperçue) :
+   * - `currentConfigFingerprint()` : tout, y compris `cognition` (v10+).
+   * - `preCognitionConfigFingerprint()` : `weather`/`ecology` inclus, `cognition` non —
+   *   sauvegardes v9 postérieures à l'écologie mais antérieures à la Phase 3.
+   * - `legacyConfigFingerprint()` : ni l'un ni l'autre — sauvegardes v9 antérieures à
+   *   l'écologie (`ecologyVersion` absent).
    */
   private currentConfigFingerprint(): string {
-    return this.computeBehaviorFingerprint(false);
+    return this.computeBehaviorFingerprint({ includeEcology: true, includeCognition: true });
+  }
+
+  /** Formule exacte utilisée par les sauvegardes v9 postérieures à l'écologie mais antérieures à la Phase 3 (cognition). */
+  private preCognitionConfigFingerprint(): string {
+    return this.computeBehaviorFingerprint({ includeEcology: true, includeCognition: false });
   }
 
   /** Formule exacte utilisée par les sauvegardes v9 antérieures à l'écologie. */
   private legacyConfigFingerprint(): string {
-    return this.computeBehaviorFingerprint(true);
+    return this.computeBehaviorFingerprint({ includeEcology: false, includeCognition: false });
   }
 
-  private computeBehaviorFingerprint(legacy: boolean): string {
+  private computeBehaviorFingerprint(options: {
+    includeEcology: boolean;
+    includeCognition: boolean;
+  }): string {
     const {
       time,
       environment,
       weather,
       ecology,
+      cognition,
       movement,
       wander,
       needs,
@@ -419,11 +457,13 @@ export class Simulation {
       pathfinding,
       scheduler,
     };
+    const simulation = {
+      ...behavior,
+      ...(options.includeEcology ? { weather, ecology } : {}),
+      ...(options.includeCognition ? { cognition } : {}),
+    };
     return computeConfigFingerprint(
-      {
-        simulation: legacy ? behavior : { ...behavior, weather, ecology },
-        generation: this.world.generator.fingerprintSource,
-      },
+      { simulation, generation: this.world.generator.fingerprintSource },
       { sizeMeters: this.world.sizeMeters, chunkSizeMeters: this.world.chunkSizeMeters },
     );
   }
