@@ -520,7 +520,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           z: transform.z,
           outcome: poisoned ? 'physiology.poisoning_started' : 'physiology.satiety_increased',
           ...(conceptId === null ? {} : { subjectConcept: conceptId }),
-          ...(conceptId === null
+          ...(conceptId === null || state.mealStartedTick < 0
             ? {}
             : {
                 experience: {
@@ -536,7 +536,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           // Un empoisonnement ordinaire (toxicité 0.3) est déjà bien plus marquant qu'un
           // repas sain (0.2) ; un empoisonnement sévère (0.9) devient un vrai traumatisme
           // qui va survivre à des dizaines de repas suivants.
-          emotionalStrength01: poisoned ? clamp(0.5 + state.poisoningToxicity01 * 0.5, 0, 1) : 0.2,
+          emotionalStrength01: poisoned ? 0.8 : 0.2,
         },
         cognitionConfig,
       );

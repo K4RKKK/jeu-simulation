@@ -41,6 +41,7 @@ describe('rememberEpisodic', () => {
     rememberEpisodic(memory, draft({ tick: 1, emotionalStrength01: 0.3 }), CONFIG);
     rememberEpisodic(memory, draft({ tick: 2, emotionalStrength01: 0.9 }), CONFIG); // traumatisme
     rememberEpisodic(memory, draft({ tick: 3, emotionalStrength01: 0.2 }), CONFIG);
+    memory.lastProcessedExperienceId = 2;
     // 4ème ajout : tableau plein, on évince le plus faible (tick 3, strength 0.2).
     rememberEpisodic(memory, draft({ tick: 4, emotionalStrength01: 0.5 }), CONFIG);
     const ticks = memory.episodic.map((e) => e.tick).sort();
@@ -54,8 +55,20 @@ describe('rememberEpisodic', () => {
     rememberEpisodic(memory, draft({ tick: 1, emotionalStrength01: 0.3 }), CONFIG);
     rememberEpisodic(memory, draft({ tick: 2, emotionalStrength01: 0.3 }), CONFIG);
     rememberEpisodic(memory, draft({ tick: 3, emotionalStrength01: 0.3 }), CONFIG);
+    memory.lastProcessedExperienceId = 2;
     rememberEpisodic(memory, draft({ tick: 4, emotionalStrength01: 0.3 }), CONFIG);
     expect(memory.episodic.map((e) => e.tick)).toEqual([2, 3, 4]);
+  });
+
+  it('keeps unprocessed episodes beyond capacity until learning consolidates them', () => {
+    const memory = createEmptyCognitiveMemory();
+    rememberEpisodic(memory, draft({ tick: 1 }), CONFIG);
+    rememberEpisodic(memory, draft({ tick: 2 }), CONFIG);
+    rememberEpisodic(memory, draft({ tick: 3 }), CONFIG);
+    rememberEpisodic(memory, draft({ tick: 4 }), CONFIG);
+
+    expect(memory.lastProcessedExperienceId).toBeNull();
+    expect(memory.episodic.map((entry) => entry.id)).toEqual([0, 1, 2, 3]);
   });
 
   it('conserve les champs optionnels (position, concept) quand ils sont fournis', () => {

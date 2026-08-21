@@ -467,12 +467,14 @@ export function migrateSnapshotV13ToV14(snapshot: SimulationSnapshot): Simulatio
     beliefs: { property: string; value: unknown; [key: string]: unknown }[];
     [key: string]: unknown;
   };
+  type LegacyNeedsState = Record<string, unknown>;
   const components = snapshot.entities.components;
   const memories = (components.CognitiveMemory ?? []) as unknown as [EntityId, LegacyMemory][];
   const knowledge = (components.CognitiveKnowledge ?? []) as unknown as [
     EntityId,
     LegacyKnowledge,
   ][];
+  const needsStates = (components.NeedsState ?? []) as unknown as [EntityId, LegacyNeedsState][];
   return {
     ...snapshot,
     version: 14,
@@ -504,6 +506,15 @@ export function migrateSnapshotV13ToV14(snapshot: SimulationSnapshot): Simulatio
                     : belief.value,
               };
             }),
+          },
+        ]),
+        // A v13 meal has no canonical hunger baseline, so it cannot yield learning evidence.
+        NeedsState: needsStates.map(([id, state]) => [
+          id,
+          {
+            ...state,
+            mealStartedTick: -1,
+            mealHungerBefore01: 0,
           },
         ]),
       },
