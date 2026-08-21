@@ -59,6 +59,18 @@ export interface EpisodicMemoryEntry {
   readonly z?: number;
   readonly outcome: string;
   readonly emotionalStrength01: number;
+  /** Observation structurée d'une ingestion, sans vérité moteur. */
+  readonly experience?: FoodIngestionExperience;
+}
+
+export interface FoodIngestionExperience {
+  readonly kind: 'food.ingestion';
+  readonly subjectConceptId: ConceptId;
+  readonly actionTick: number;
+  readonly outcomeTick: number;
+  readonly hungerBefore01: number;
+  readonly hungerAfter01: number;
+  readonly illnessObserved: boolean;
 }
 
 /** Ce qu'un humain retient d'un autre humain — primitives sociales minimales (P3.4 texte). */
@@ -88,13 +100,21 @@ export interface CognitiveMemoryComponent {
   nextMemoryId: MemoryId;
   spatial: SpatialMemoryEntry[];
   episodic: EpisodicMemoryEntry[];
+  /** Watermark monotone : les expériences d'id supérieur ne peuvent pas être évincées. */
+  lastProcessedExperienceId: MemoryId | null;
   social: SocialMemoryEntry[];
 }
 
 export const CognitiveMemory = defineComponent<CognitiveMemoryComponent>('CognitiveMemory');
 
 export function createEmptyCognitiveMemory(): CognitiveMemoryComponent {
-  return { nextMemoryId: 0, spatial: [], episodic: [], social: [] };
+  return {
+    nextMemoryId: 0,
+    spatial: [],
+    episodic: [],
+    lastProcessedExperienceId: null,
+    social: [],
+  };
 }
 
 /** Alloue un `MemoryId` déterministe et met à jour le compteur du composant en place. */

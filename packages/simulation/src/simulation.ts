@@ -24,10 +24,12 @@ import {
   migrateSnapshotV10ToV11,
   migrateSnapshotV11ToV12,
   migrateSnapshotV12ToV13,
+  migrateSnapshotV13ToV14,
   restoreEntities,
   type SimulationSnapshot,
 } from './persistence/simulationSnapshot.js';
 import { ForgettingSystem } from './systems/cognition/forgettingSystem.js';
+import { LearningSystem } from './systems/cognition/learningSystem.js';
 import { MovementSystem } from './systems/movementSystem.js';
 import { MetabolismSystem } from './systems/needs/metabolismSystem.js';
 import { NeedSatisfactionSystem } from './systems/needs/needSatisfactionSystem.js';
@@ -302,6 +304,7 @@ export class Simulation {
     if (snapshot.version === 10) snapshot = migrateSnapshotV10ToV11(snapshot);
     if (snapshot.version === 11) snapshot = migrateSnapshotV11ToV12(snapshot);
     if (snapshot.version === 12) snapshot = migrateSnapshotV12ToV13(snapshot);
+    if (snapshot.version === 13) snapshot = migrateSnapshotV13ToV14(snapshot);
     if (snapshot.version !== SIMULATION_SNAPSHOT_VERSION) {
       throw new Error(
         `restoreSnapshot: version ${snapshot.version} incompatible avec ${SIMULATION_SNAPSHOT_VERSION}`,
@@ -500,6 +503,7 @@ export function defaultSystems(): SimulationSystem[] {
     new MetabolismSystem(),
     new PerceptionSystem(),
     new NeedSatisfactionSystem(),
+    new LearningSystem(),
     new TemporaryWanderSystem(),
     new PathfindingSystem(),
     new MovementSystem(),

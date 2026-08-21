@@ -424,22 +424,19 @@ describe('NeedSatisfactionSystem', () => {
     simulation.step(400);
 
     const memory = simulation.entities.getComponentOrThrow(entity, CognitiveMemory);
-    const foodEpisode = memory.episodic.find((e) => e.eventType === 'food.eaten');
+    const foodEpisode = memory.episodic.find((e) => e.eventType === 'food.ingestion');
     expect(foodEpisode).toBeDefined();
     expect(foodEpisode?.outcome).toBe('physiology.poisoning_started');
     expect(foodEpisode?.subjectConcept).toBe(toxic.perceptualConceptId);
+    expect(foodEpisode?.experience).toMatchObject({
+      kind: 'food.ingestion',
+      subjectConceptId: toxic.perceptualConceptId,
+      illnessObserved: true,
+    });
     // Un empoisonnement est significativement plus marquant qu'un repas ordinaire (0.2).
     expect(foodEpisode!.emotionalStrength01).toBeGreaterThan(0.5);
-    const knowledge = simulation.entities.getComponentOrThrow(entity, CognitiveKnowledge);
-    expect(knowledge.beliefs).toContainEqual({
-      id: 0,
-      subjectConcept: toxic.perceptualConceptId,
-      property: 'food.edible',
-      value: { kind: 'probability', value01: 0 },
-      confidence01: 0.5,
-      evidenceCount: 1,
-      lastUpdatedTick: foodEpisode!.tick,
-    });
+    // NeedSatisfaction ne consolide plus de croyance : LearningSystem en est seul responsable.
+    expect(simulation.entities.getComponentOrThrow(entity, CognitiveKnowledge).beliefs).toEqual([]);
     simulation.dispose();
   });
 

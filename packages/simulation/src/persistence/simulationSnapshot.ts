@@ -97,7 +97,10 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // une reprojection créerait des souvenirs dupliqués sans confiance ni précision correcte).
 // Perte de fonctionnalité assumée : au chargement, la décision vitale attend un nouveau
 // scan (quelques ticks) avant d'avoir un souvenir de rive/ressource utilisable.
-export const SIMULATION_SNAPSHOT_VERSION = 13;
+// v14 : Phase 3.3 - ingestion experiences are consolidated separately by LearningSystem.
+// The persisted watermark prevents loading a save from learning the same episode twice.
+// Legacy food.edible probabilities migrate to inverse food.illnessRisk probabilities.
+export const SIMULATION_SNAPSHOT_VERSION = 14;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -447,6 +450,60 @@ export function migrateSnapshotV12ToV13(snapshot: SimulationSnapshot): Simulatio
             ...value,
             resourceConceptId: value.resourceConceptId ?? null,
             currentMealCausedPoisoning: value.currentMealCausedPoisoning ?? false,
+          },
+        ]),
+      },
+    },
+  };
+}
+
+/** v13 -> v14 : apprentissage séparé, watermark et croyances nutrition/risque. */
+export function migrateSnapshotV13ToV14(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 13) {
+    throw new Error(`migrateSnapshotV13ToV14: version ${snapshot.version} inattendue (13 requis)`);
+  }
+  type LegacyMemory = { episodic: { id: number }[]; [key: string]: unknown };
+  type LegacyKnowledge = {
+    beliefs: { property: string; value: unknown; [key: string]: unknown }[];
+    [key: string]: unknown;
+  };
+  const components = snapshot.entities.components;
+  const memories = (components.CognitiveMemory ?? []) as unknown as [EntityId, LegacyMemory][];
+  const knowledge = (components.CognitiveKnowledge ?? []) as unknown as [
+    EntityId,
+    LegacyKnowledge,
+  ][];
+  return {
+    ...snapshot,
+    version: 14,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        CognitiveMemory: memories.map(([id, memory]) => [
+          id,
+          {
+            ...memory,
+            lastProcessedExperienceId:
+              memory.episodic.length === 0 ? null : memory.episodic[memory.episodic.length - 1]!.id,
+          },
+        ]),
+        CognitiveKnowledge: knowledge.map(([id, entry]) => [
+          id,
+          {
+            ...entry,
+            beliefs: entry.beliefs.map((belief) => {
+              if (belief.property !== 'food.edible') return belief;
+              const value = belief.value as { kind?: string; value01?: number };
+              return {
+                ...belief,
+                property: 'food.illnessRisk',
+                value:
+                  value.kind === 'probability'
+                    ? { kind: 'probability', value01: 1 - (value.value01 ?? 0.5) }
+                    : belief.value,
+              };
+            }),
           },
         ]),
       },

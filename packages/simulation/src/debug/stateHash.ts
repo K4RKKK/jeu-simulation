@@ -360,7 +360,8 @@ function fnv1aHashState(state: CanonicalState): string {
           (entry) =>
             `${entry.id}:${entry.tick}:${entry.eventType}:${entry.actors.join(',')}:` +
             `${entry.subjectConcept ?? 'n'}:${entry.x === undefined ? 'n' : q(entry.x)}:` +
-            `${entry.z === undefined ? 'n' : q(entry.z)}:${entry.outcome}:${q(entry.emotionalStrength01)}`,
+            `${entry.z === undefined ? 'n' : q(entry.z)}:${entry.outcome}:${q(entry.emotionalStrength01)}:` +
+            `${entry.experience === undefined ? 'n' : `${entry.experience.kind}:${entry.experience.subjectConceptId}:${entry.experience.actionTick}:${entry.experience.outcomeTick}:${q(entry.experience.hungerBefore01)}:${q(entry.experience.hungerAfter01)}:${entry.experience.illnessObserved ? 1 : 0}`}`,
         )
         .join(';');
       const social = cognitiveMemory.social
@@ -369,7 +370,9 @@ function fnv1aHashState(state: CanonicalState): string {
             `${entry.id}:${entry.humanId}:${q(entry.trust01)}:${q(entry.familiarity01)}:${entry.lastContactTick}`,
         )
         .join(';');
-      write(`cm:${entity}:${cognitiveMemory.nextMemoryId}|${spatial}|${episodic}|${social}`);
+      write(
+        `cm:${entity}:${cognitiveMemory.nextMemoryId}:${cognitiveMemory.lastProcessedExperienceId ?? 'n'}|${spatial}|${episodic}|${social}`,
+      );
     }
 
     if (cognitiveKnowledge) {

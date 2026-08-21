@@ -19,7 +19,13 @@ describe('composants cognitifs (Phase 3.1)', () => {
     const simulation = makeSimulation('cognition-spawn');
     for (const id of simulation.humanIds()) {
       const memory = simulation.entities.getComponentOrThrow(id, CognitiveMemory);
-      expect(memory).toEqual({ nextMemoryId: 0, spatial: [], episodic: [], social: [] });
+      expect(memory).toEqual({
+        nextMemoryId: 0,
+        spatial: [],
+        episodic: [],
+        lastProcessedExperienceId: null,
+        social: [],
+      });
 
       const knowledge = simulation.entities.getComponentOrThrow(id, CognitiveKnowledge);
       expect(knowledge).toEqual({ nextBeliefId: 0, beliefs: [] });

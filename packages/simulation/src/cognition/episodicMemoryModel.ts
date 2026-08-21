@@ -55,14 +55,38 @@ export function rememberEpisodic(
  * des événements ordinaires (tous à intensité modérée).
  */
 function evictLeastIntense(memory: CognitiveMemoryComponent): void {
-  let worstIndex = 0;
+  let worstIndex = -1;
   let worstStrength = Number.POSITIVE_INFINITY;
   for (let i = 0; i < memory.episodic.length; i++) {
-    const strength = memory.episodic[i]!.emotionalStrength01;
+    const candidate = memory.episodic[i]!;
+    if (
+      memory.lastProcessedExperienceId !== null &&
+      candidate.id > memory.lastProcessedExperienceId
+    ) {
+      continue;
+    }
+    const strength = candidate.emotionalStrength01;
     if (strength < worstStrength) {
       worstStrength = strength;
       worstIndex = i;
     }
   }
-  memory.episodic.splice(worstIndex, 1);
+  // Une brève surcharge est préférable à la perte d'une expérience non consolidée.
+  if (worstIndex >= 0) memory.episodic.splice(worstIndex, 1);
+}
+
+/** Premier épisode plus récent que le watermark, par recherche binaire. */
+export function firstUnprocessedExperienceIndex(
+  episodic: readonly EpisodicMemoryEntry[],
+  lastProcessedExperienceId: number | null,
+): number {
+  if (lastProcessedExperienceId === null) return 0;
+  let low = 0;
+  let high = episodic.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (episodic[middle]!.id <= lastProcessedExperienceId) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
