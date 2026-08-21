@@ -4,9 +4,11 @@ import { NavGrid, PathFindingService } from '@civ/pathfinding';
 import {
   Activity,
   CognitiveMemory,
+  HumanCognition,
   Movement,
   Needs,
   NeedsState,
+  Personality,
   Transform,
 } from '../../components/index.js';
 import type { CognitiveMemoryComponent } from '../../components/index.js';
@@ -153,8 +155,14 @@ describe('NeedSatisfactionSystem', () => {
     const entity = simulation.humanIds()[0]!;
     const activity = simulation.entities.getComponentOrThrow(entity, Activity);
     const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
 
     // La décision vient du souvenir, et la raison le dit (règle 12).
+    expect(cognition.decisionReason?.code).toBe('decision.drink');
+    expect(cognition.decisionReason?.factors).toContainEqual({
+      code: 'memory.water.known',
+      value: 1,
+    });
     expect(activity.reason).toContain("se souvient d'une rive");
     if (state.action === 'seekWater') {
       expect(activity.kind).toBe('walking');
@@ -186,6 +194,7 @@ describe('NeedSatisfactionSystem', () => {
     const activity = simulation.entities.getComponentOrThrow(entity, Activity);
     const movement = simulation.entities.getComponentOrThrow(entity, Movement);
     const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
 
     // La décision de se nourrir est prise, avec une raison lisible (règle 12). Selon le
     // monde, la ressource la plus proche est à portée de main (repas immédiat) ou plus
@@ -200,6 +209,11 @@ describe('NeedSatisfactionSystem', () => {
       expect(activity.kind).toBe('eat');
       expect(activity.reason).toContain('mange pour apaiser sa faim');
     }
+    expect(cognition.decisionReason?.code).toBe('decision.eat');
+    expect(cognition.decisionReason?.factors).toContainEqual({
+      code: 'memory.food.known',
+      value: 1,
+    });
     expect(state.resourceId).not.toBeNull();
     simulation.dispose();
   });
@@ -213,10 +227,35 @@ describe('NeedSatisfactionSystem', () => {
     const entity = simulation.humanIds()[0]!;
     const activity = simulation.entities.getComponentOrThrow(entity, Activity);
     const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
 
     expect(activity.kind).toBe('rest');
     expect(activity.reason).toContain('épuisé');
     expect(state.action).toBe('rest');
+    expect(cognition.decisionReason?.code).toBe('decision.rest');
+    simulation.dispose();
+  });
+
+  it('keeps exploration as the default baseline when no vital need dominates', () => {
+    const simulation = needsSystems();
+    simulation.start();
+    const entity = simulation.humanIds()[0]!;
+    const personality = simulation.entities.getComponentOrThrow(entity, Personality);
+    personality.curiosity = 0.8;
+    setNeeds(simulation, { hydration: 1, hunger: 1, energy: 1 });
+
+    simulation.step(10);
+
+    const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    const activity = simulation.entities.getComponentOrThrow(entity, Activity);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
+    expect(state.action).toBe('none');
+    expect(activity.kind).toBe('idle');
+    expect(cognition.decisionReason?.code).toBe('decision.explore');
+    expect(cognition.decisionReason?.factors).toContainEqual({
+      code: 'personality.curiosity',
+      value: 0.8,
+    });
     simulation.dispose();
   });
 

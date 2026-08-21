@@ -1,17 +1,21 @@
 import {
   Activity,
   CognitiveMemory,
+  HumanCognition,
   Movement,
   Needs,
   NeedsState,
+  Personality,
   Transform,
 } from '../../components/index.js';
 import type {
   ActivityComponent,
   CognitiveMemoryComponent,
+  HumanCognitionComponent,
   MovementComponent,
   NeedsComponent,
   NeedsStateComponent,
+  PersonalityComponent,
   TransformComponent,
 } from '../../components/index.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
@@ -25,6 +29,13 @@ import {
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
 import { nearestKnownFood, nearestKnownWater } from '../../cognition/spatialMemoryQuery.js';
+import {
+  pickBestOption,
+  scoreDrink,
+  scoreEat,
+  scoreExplore,
+  scoreRest,
+} from '../../cognition/utilityScorer.js';
 
 /**
  * Décide des actions vitales quand un besoin devient critique (CLAUDE.md règle 7 : il
@@ -52,8 +63,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   update(ctx: SystemUpdateContext): void {
     ctx.entities.each(
-      [Needs, Activity, Movement, Transform, CognitiveMemory],
-      (entity, needs, activity, movement, transform, memory) => {
+      [Needs, Activity, Movement, Transform, CognitiveMemory, HumanCognition, Personality],
+      (entity, needs, activity, movement, transform, memory, cognition, personality) => {
         // Le plan n'existe que pour les besoins critiques : on le crée au premier passage.
         const state =
           ctx.entities.getComponent(entity, NeedsState) ??
@@ -72,7 +83,18 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           });
 
         if (state.action === 'none') {
-          this.decide(ctx, entity, needs, state, activity, movement, transform, memory);
+          this.decide(
+            ctx,
+            entity,
+            needs,
+            state,
+            activity,
+            movement,
+            transform,
+            memory,
+            cognition,
+            personality,
+          );
           return;
         }
 
@@ -106,21 +128,47 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     movement: MovementComponent,
     transform: TransformComponent,
     memory: CognitiveMemoryComponent,
+    cognition: HumanCognitionComponent,
+    personality: PersonalityComponent,
   ): void {
     const { needs: config } = ctx.config;
-    if (needs.energy < config.energy.exhaustedThreshold) {
+    const knownWater = nearestKnownWater(memory.spatial, transform.x, transform.z);
+    const knownFood = nearestKnownFood(
+      memory.spatial,
+      transform.x,
+      transform.z,
+      (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
+      (resourceId) => ctx.world.delta.isDepleted(resourceId),
+    );
+    const recentPoisonings = memory.episodic.filter(
+      (entry) =>
+        entry.eventType === 'food.eaten' && entry.outcome === 'physiology.poisoning_started',
+    ).length;
+
+    const { winner, reason } = pickBestOption([
+      scoreDrink(needs, knownWater !== null, config.hydration.criticalThreshold),
+      scoreEat(needs, knownFood !== null, recentPoisonings, config.hunger.criticalThreshold),
+      scoreRest(needs, config.energy.exhaustedThreshold),
+      scoreExplore(personality),
+    ]);
+    cognition.decisionReason = reason;
+
+    if (winner.kind === 'explore') return;
+    if (winner.kind === 'rest') {
       this.startRest(ctx, needs, state, activity);
       return;
     }
+
     // Après un chemin introuvable, ne pas re-planifier dans le vide pendant le délai de
     // retenue posé par le PathfindingSystem : l'errance explore, la perception mémorisera
     // d'autres cibles.
     if (ctx.tick < state.pathFailedAtTick) return;
-    if (needs.hydration < config.hydration.criticalThreshold) {
+    if (winner.kind === 'drink') {
+      if (knownWater === null) return;
       this.seekWater(ctx, entity, state, activity, movement, transform, memory);
       return;
     }
-    if (needs.hunger < config.hunger.criticalThreshold) {
+    if (knownFood !== null) {
       this.seekFood(ctx, entity, state, activity, movement, transform, memory);
     }
   }
