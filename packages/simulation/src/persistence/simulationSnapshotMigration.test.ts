@@ -531,6 +531,15 @@ describe('migrateSnapshotV13ToV14', () => {
               },
             ],
           ],
+          NeedsState: [
+            [
+              human,
+              {
+                action: 'eat',
+                resourceConceptId: 'mushroom:unknown',
+              },
+            ],
+          ],
         },
       },
     };
@@ -546,6 +555,11 @@ describe('migrateSnapshotV13ToV14', () => {
       }
     ).beliefs[0];
     expect(memory.lastProcessedExperienceId).toBe(2);
+    const legacyMeal = (migrated.entities.components.NeedsState ?? [])[0]?.[1] as {
+      mealStartedTick: number;
+      mealHungerBefore01: number;
+    };
+    expect(legacyMeal).toMatchObject({ mealStartedTick: -1, mealHungerBefore01: 0 });
     if (belief === undefined) throw new Error('croyance migrée absente');
     expect(belief.property).toBe('food.illnessRisk');
     expect(belief.value.value01).toBeCloseTo(0.2);

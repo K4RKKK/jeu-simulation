@@ -3,6 +3,7 @@ import {
   CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
+  NeedsState,
   allocateBeliefId,
   allocateMemoryId,
 } from '../components/index.js';
@@ -129,6 +130,44 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
     memory.lastProcessedExperienceId = 42;
 
     expect(hashWorldState(simulation)).not.toBe(before);
+    simulation.dispose();
+  });
+
+  it('changes when a meal experience baseline changes', () => {
+    const simulation = new Simulation({
+      seed: 'hash-meal-baseline',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    const [human] = simulation.humanIds();
+    if (human === undefined) throw new Error('aucun humain');
+    const state = simulation.entities.addComponent(human, NeedsState, {
+      action: 'eat',
+      targetX: null,
+      targetZ: null,
+      resourceId: 'food-1',
+      resourceOwnerChunkKey: '0:0',
+      resourceLocalId: 1,
+      resourceConceptId: 'berry:red',
+      mealStartedTick: 10,
+      mealHungerBefore01: 0.2,
+      untilTick: 20,
+      mealMaxGain: 0.4,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    const hashA = hashWorldState(simulation);
+
+    state.mealStartedTick = 11;
+    const tickHash = hashWorldState(simulation);
+    state.mealStartedTick = 10;
+    state.mealHungerBefore01 = 0.3;
+    const hungerHash = hashWorldState(simulation);
+
+    expect(tickHash).not.toBe(hashA);
+    expect(hungerHash).not.toBe(hashA);
     simulation.dispose();
   });
 

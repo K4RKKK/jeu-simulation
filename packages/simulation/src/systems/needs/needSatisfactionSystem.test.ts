@@ -433,8 +433,8 @@ describe('NeedSatisfactionSystem', () => {
       subjectConceptId: toxic.perceptualConceptId,
       illnessObserved: true,
     });
-    // Un empoisonnement est significativement plus marquant qu'un repas ordinaire (0.2).
-    expect(foodEpisode!.emotionalStrength01).toBeGreaterThan(0.5);
+    // IntensitÃ© fondÃ©e sur le symptÃ´me observÃ©, pas sur la toxicitÃ© moteur exacte.
+    expect(foodEpisode!.emotionalStrength01).toBe(0.8);
     // NeedSatisfaction ne consolide plus de croyance : LearningSystem en est seul responsable.
     expect(simulation.entities.getComponentOrThrow(entity, CognitiveKnowledge).beliefs).toEqual([]);
     simulation.dispose();
@@ -476,6 +476,36 @@ describe('NeedSatisfactionSystem', () => {
       }
     }
     expect(wanderInterfered).toBe(false);
+    simulation.dispose();
+  });
+
+  it('records but does not learn from a legacy meal without a canonical baseline', () => {
+    const simulation = needsSystems();
+    const entity = simulation.humanIds()[0]!;
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'eat',
+      targetX: null,
+      targetZ: null,
+      resourceId: null,
+      resourceOwnerChunkKey: null,
+      resourceLocalId: null,
+      resourceConceptId: 'mushroom:legacy',
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    simulation.start();
+    simulation.step(6);
+
+    const memory = simulation.entities.getComponentOrThrow(entity, CognitiveMemory);
+    const episode = memory.episodic.find((entry) => entry.eventType === 'food.ingestion');
+    expect(episode).toMatchObject({ subjectConcept: 'mushroom:legacy' });
+    expect(episode?.experience).toBeUndefined();
     simulation.dispose();
   });
 });

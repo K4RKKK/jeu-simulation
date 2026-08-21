@@ -316,6 +316,7 @@ function fnv1aHashState(state: CanonicalState): string {
         `ns:${entity}:${needsState.action}:${qOrNull(needsState.targetX)}:${qOrNull(needsState.targetZ)}:` +
           `${needsState.resourceId ?? 'n'}:${needsState.resourceOwnerChunkKey ?? 'n'}:` +
           `${needsState.resourceLocalId ?? 'n'}:${needsState.resourceConceptId ?? 'n'}:` +
+          `${needsState.mealStartedTick}:${q(needsState.mealHungerBefore01)}:` +
           `${needsState.untilTick}:${q(needsState.mealMaxGain)}:` +
           `${needsState.poisoningUntilTick}:${q(needsState.poisoningToxicity01)}:` +
           `${needsState.currentMealCausedPoisoning ? 1 : 0}:${needsState.pathFailedAtTick}`,

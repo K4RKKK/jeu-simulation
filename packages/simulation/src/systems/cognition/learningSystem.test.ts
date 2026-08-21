@@ -8,11 +8,11 @@ import {
 import { Simulation } from '../../simulation.js';
 import { LearningSystem } from './learningSystem.js';
 
-function simulation(): Simulation {
+function simulation(maxEpisodicEntries = 64): Simulation {
   return new Simulation({
     seed: 'learning-system',
     population: 2,
-    config: { time: { gameSecondsPerTick: 1 } },
+    config: { time: { gameSecondsPerTick: 1 }, cognition: { maxEpisodicEntries } },
     systems: [new LearningSystem()],
   });
 }
@@ -70,6 +70,29 @@ describe('LearningSystem', () => {
     world.step(6);
     expect(world.entities.getComponentOrThrow(a!, CognitiveKnowledge).beliefs).toHaveLength(2);
     expect(world.entities.getComponentOrThrow(b!, CognitiveKnowledge).beliefs).toHaveLength(0);
+    world.dispose();
+  });
+
+  it('prune le dÃ©bordement seulement aprÃ¨s avoir consolidÃ© toutes les expÃ©riences', () => {
+    const world = simulation(1);
+    world.start();
+    const human = world.humanIds()[0]!;
+    addIngestion(world, human, false);
+    addIngestion(world, human, true);
+    const memory = world.entities.getComponentOrThrow(human, CognitiveMemory);
+    expect(memory.episodic).toHaveLength(2);
+
+    world.step(6);
+
+    expect(memory.lastProcessedExperienceId).toBe(1);
+    expect(memory.episodic).toHaveLength(1);
+    const knowledge = world.entities.getComponentOrThrow(human, CognitiveKnowledge);
+    expect(knowledge.beliefs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ property: FOOD_NOURISHING_PROPERTY, evidenceCount: 2 }),
+        expect.objectContaining({ property: FOOD_ILLNESS_RISK_PROPERTY, evidenceCount: 2 }),
+      ]),
+    );
     world.dispose();
   });
 });

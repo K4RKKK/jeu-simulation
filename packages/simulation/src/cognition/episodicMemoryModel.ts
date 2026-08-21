@@ -44,8 +44,16 @@ export function rememberEpisodic(
 ): void {
   const entry: EpisodicMemoryEntry = { id: allocateMemoryId(memory), ...draft };
   memory.episodic.push(entry);
-  if (memory.episodic.length > config.maxEpisodicEntries) {
-    evictLeastIntense(memory);
+  pruneEpisodic(memory, config);
+}
+
+/** Brings memory back under its target without losing unprocessed experiences. */
+export function pruneEpisodic(
+  memory: CognitiveMemoryComponent,
+  config: Pick<CognitionConfig, 'maxEpisodicEntries'>,
+): void {
+  while (memory.episodic.length > config.maxEpisodicEntries && evictLeastIntense(memory)) {
+    // Every eviction strictly reduces length; the loop stays bounded.
   }
 }
 
@@ -54,13 +62,13 @@ export function rememberEpisodic(
  * (le premier trouvé) part en premier, garantissant un renouvellement dans la fenêtre
  * des événements ordinaires (tous à intensité modérée).
  */
-function evictLeastIntense(memory: CognitiveMemoryComponent): void {
+function evictLeastIntense(memory: CognitiveMemoryComponent): boolean {
   let worstIndex = -1;
   let worstStrength = Number.POSITIVE_INFINITY;
   for (let i = 0; i < memory.episodic.length; i++) {
     const candidate = memory.episodic[i]!;
     if (
-      memory.lastProcessedExperienceId !== null &&
+      memory.lastProcessedExperienceId === null ||
       candidate.id > memory.lastProcessedExperienceId
     ) {
       continue;
@@ -72,7 +80,9 @@ function evictLeastIntense(memory: CognitiveMemoryComponent): void {
     }
   }
   // Une brève surcharge est préférable à la perte d'une expérience non consolidée.
-  if (worstIndex >= 0) memory.episodic.splice(worstIndex, 1);
+  if (worstIndex < 0) return false;
+  memory.episodic.splice(worstIndex, 1);
+  return true;
 }
 
 /** Premier épisode plus récent que le watermark, par recherche binaire. */

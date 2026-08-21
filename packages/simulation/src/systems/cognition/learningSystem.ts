@@ -1,5 +1,8 @@
 import { CognitiveKnowledge, CognitiveMemory } from '../../components/index.js';
-import { firstUnprocessedExperienceIndex } from '../../cognition/episodicMemoryModel.js';
+import {
+  firstUnprocessedExperienceIndex,
+  pruneEpisodic,
+} from '../../cognition/episodicMemoryModel.js';
 import { applyFoodIngestionEvidence } from '../../cognition/foodBeliefModel.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
 import type { SimulationSystem, SystemUpdateContext } from '../../core/system.js';
@@ -30,6 +33,7 @@ export class LearningSystem implements SimulationSystem {
         }
         memory.lastProcessedExperienceId = episode.id;
       }
+      pruneEpisodic(memory, ctx.config.cognition);
     });
   }
 }
