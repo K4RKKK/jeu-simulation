@@ -1,23 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import { CognitiveKnowledge, CognitiveMemory, HumanCognition } from '../components/index.js';
 import { Simulation } from '../simulation.js';
-import { migrateSnapshotV9ToV10, type SimulationSnapshot } from './simulationSnapshot.js';
+import {
+  migrateSnapshotV9ToV10,
+  migrateSnapshotV10ToV11,
+  type SimulationSnapshot,
+} from './simulationSnapshot.js';
 
 function makeSimulation(seed: string): Simulation {
   return new Simulation({ seed, population: 3, config: { time: { gameSecondsPerTick: 1 } } });
 }
 
-/** Simule une sauvegarde v9 : un snapshot v10 réel, privé de ses trois entrées cognitives. */
-function asV9Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
+/**
+ * Simule une sauvegarde v9 : un snapshot v10 réel, privé de ses trois entrées
+ * cognitives, avec l'empreinte de configuration recalculée selon la formule RÉELLEMENT
+ * utilisée par le code v9 (postérieure à l'écologie, antérieure à `cognition` — voir
+ * `Simulation.preCognitionConfigFingerprint`). Réutiliser l'empreinte v10 du snapshot
+ * source (laquelle inclut `cognition`) aurait fait passer le test de migration pour de
+ * mauvaises raisons : ce n'est PAS l'empreinte qu'un vrai v9 aurait jamais portée.
+ */
+function asV9Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): SimulationSnapshot {
   const {
     CognitiveMemory: _m,
     CognitiveKnowledge: _k,
     HumanCognition: _c,
     ...rest
   } = snapshot.entities.components;
+  const preCognitionFingerprint = (
+    simulation as unknown as { preCognitionConfigFingerprint(): string }
+  ).preCognitionConfigFingerprint();
   return {
     ...snapshot,
     version: 9,
+    configFingerprint: preCognitionFingerprint,
     entities: { ...snapshot.entities, components: rest },
   };
 }
@@ -26,7 +41,7 @@ describe('migrateSnapshotV9ToV10', () => {
   it('ajoute les trois composants cognitifs, vides, pour chaque humain existant', () => {
     const simulation = makeSimulation('migration-v9-v10');
     const humanIds = simulation.humanIds();
-    const v9 = asV9Snapshot(simulation.captureSnapshot());
+    const v9 = asV9Snapshot(simulation, simulation.captureSnapshot());
     simulation.dispose();
 
     expect(v9.entities.components.CognitiveMemory).toBeUndefined();
@@ -49,7 +64,7 @@ describe('migrateSnapshotV9ToV10', () => {
 
   it('ne touche pas le snapshot original (pure)', () => {
     const simulation = makeSimulation('migration-v9-purity');
-    const v9 = asV9Snapshot(simulation.captureSnapshot());
+    const v9 = asV9Snapshot(simulation, simulation.captureSnapshot());
     simulation.dispose();
 
     migrateSnapshotV9ToV10(v9);
@@ -70,7 +85,7 @@ describe('migrateSnapshotV9ToV10', () => {
     const source = makeSimulation('migration-end-to-end');
     source.start();
     source.step(50);
-    const v9 = asV9Snapshot(source.captureSnapshot());
+    const v9 = asV9Snapshot(source, source.captureSnapshot());
     const humanIds = source.humanIds();
     source.dispose();
 
@@ -93,6 +108,173 @@ describe('migrateSnapshotV9ToV10', () => {
         decisionReason: null,
       });
     }
+    target.dispose();
+  });
+
+  it('rejette une v9 dont la configuration de comportement (hors cognition) a réellement changé', () => {
+    const source = makeSimulation('migration-fingerprint-drift');
+    const v9 = asV9Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = new Simulation({
+      seed: 'migration-fingerprint-drift',
+      population: 3,
+      config: { time: { gameSecondsPerTick: 1 }, movement: { arrivalRadiusMeters: 99 } },
+    });
+
+    expect(() => target.restoreSnapshot(v9)).toThrow('configuration incompatible');
+    target.dispose();
+  });
+});
+
+/**
+ * Simule une sauvegarde v10 : version ramenée à 10, champs `encodedConfidence01` /
+ * `encodedPrecisionM` retirés des entrées spatiales, source forcée à `selfExperience`.
+ * Permet de tester `migrateSnapshotV10ToV11` sans avoir de vraies sauvegardes v10 sur
+ * disque.
+ */
+function asV10Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
+  type LegacySpatial = Record<string, unknown>;
+  type LegacyMem = {
+    nextMemoryId: number;
+    spatial: LegacySpatial[];
+    episodic: unknown[];
+    social: unknown[];
+  };
+
+  const cogMemEntries = (snapshot.entities.components.CognitiveMemory ?? []) as unknown as [
+    number,
+    LegacyMem,
+  ][];
+
+  const downgraded = cogMemEntries.map(([id, mem]): [number, LegacyMem] => [
+    id,
+    {
+      ...mem,
+      spatial: mem.spatial.map((entry) => {
+        const { encodedConfidence01: _ec, encodedPrecisionM: _ep, ...rest } = entry;
+        return { ...rest, source: 'selfExperience' };
+      }),
+    },
+  ]);
+
+  return {
+    ...snapshot,
+    version: 10,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        CognitiveMemory:
+          downgraded as unknown as SimulationSnapshot['entities']['components']['CognitiveMemory'],
+      },
+    },
+  };
+}
+
+describe('migrateSnapshotV10ToV11', () => {
+  it('backfille encodedConfidence01 et encodedPrecisionM depuis les valeurs existantes', () => {
+    const simulation = makeSimulation('migration-v10-v11');
+    simulation.start();
+    simulation.step(200);
+    const v10 = asV10Snapshot(simulation.captureSnapshot());
+    simulation.dispose();
+
+    expect(v10.version).toBe(10);
+    const migrated = migrateSnapshotV10ToV11(v10);
+    expect(migrated.version).toBe(11);
+
+    type SpatialEntry = {
+      encodedConfidence01?: number;
+      encodedPrecisionM?: number;
+      confidence01: number;
+      precisionM: number;
+    };
+    const entries = (migrated.entities.components.CognitiveMemory ?? []) as unknown as [
+      number,
+      { spatial: SpatialEntry[] },
+    ][];
+    const allSpatial = entries.flatMap(([, mem]) => mem.spatial);
+
+    if (allSpatial.length > 0) {
+      for (const entry of allSpatial) {
+        expect(entry.encodedConfidence01).toBeDefined();
+        expect(entry.encodedPrecisionM).toBeDefined();
+      }
+    }
+  });
+
+  it('convertit la source selfExperience en directPerception', () => {
+    const simulation = makeSimulation('migration-source-conv');
+    simulation.start();
+    simulation.step(200);
+    const v10 = asV10Snapshot(simulation.captureSnapshot());
+    simulation.dispose();
+
+    const migrated = migrateSnapshotV10ToV11(v10);
+    type SpatialEntry = { source: string };
+    const entries = (migrated.entities.components.CognitiveMemory ?? []) as unknown as [
+      number,
+      { spatial: SpatialEntry[] },
+    ][];
+    const allSpatial = entries.flatMap(([, mem]) => mem.spatial);
+
+    for (const entry of allSpatial) {
+      expect(entry.source).not.toBe('selfExperience');
+    }
+  });
+
+  it('refuse une version différente de 10', () => {
+    const simulation = makeSimulation('migration-v10-wrong');
+    const v11 = simulation.captureSnapshot();
+    simulation.dispose();
+
+    expect(() => migrateSnapshotV10ToV11(v11)).toThrow();
+  });
+
+  it('ne touche pas le snapshot original (pure)', () => {
+    const simulation = makeSimulation('migration-v10-purity');
+    const v10 = asV10Snapshot(simulation.captureSnapshot());
+    simulation.dispose();
+
+    migrateSnapshotV10ToV11(v10);
+
+    expect(v10.version).toBe(10);
+  });
+
+  it('Simulation.restoreSnapshot migre automatiquement une sauvegarde v10', () => {
+    const source = makeSimulation('migration-v10-e2e');
+    source.start();
+    source.step(50);
+    const v10 = asV10Snapshot(source.captureSnapshot());
+    source.dispose();
+
+    const target = makeSimulation('migration-v10-e2e');
+    expect(() => target.restoreSnapshot(v10)).not.toThrow();
+    target.dispose();
+  });
+});
+
+describe('configFingerprint — cognition (v11)', () => {
+  it('deux snapshots v10 avec des réglages cognitifs différents sont incompatibles', () => {
+    const source = new Simulation({
+      seed: 'cognition-fingerprint-drift',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    const snapshot = source.captureSnapshot();
+    source.dispose();
+
+    const target = new Simulation({
+      seed: 'cognition-fingerprint-drift',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        cognition: { spatialConfidenceHalfLifeSeconds: 999999 },
+      },
+    });
+
+    expect(() => target.restoreSnapshot(snapshot)).toThrow('configuration incompatible');
     target.dispose();
   });
 });

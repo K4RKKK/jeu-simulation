@@ -77,7 +77,7 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
       id: allocateBeliefId(knowledge),
       subjectConcept: 'berry:red:round',
       property: 'edible',
-      value: 'likely',
+      value: { kind: 'probability', value01: 0.6 },
       confidence01: 0.6,
       evidenceCount: 1,
       lastUpdatedTick: 0,
@@ -106,10 +106,44 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
       lastSeenTick: 0,
       confidence01: 0.9,
       precisionM: 1,
-      source: 'selfExperience',
+      encodedConfidence01: 0.9,
+      encodedPrecisionM: 1,
+      source: 'directPerception',
     });
 
     expect(hashWorldState(simulation)).not.toBe(before);
+    simulation.dispose();
+  });
+
+  it('change quand seul encodedConfidence01 change', () => {
+    const simulation = new Simulation({
+      seed: 'hash-encoded-confidence',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    const [human] = simulation.humanIds();
+    if (human === undefined) throw new Error('aucun humain');
+
+    const memory = simulation.entities.getComponentOrThrow(human, CognitiveMemory);
+    const base = {
+      id: allocateMemoryId(memory),
+      kind: 'water' as const,
+      x: 10,
+      z: 20,
+      lastSeenTick: 0,
+      confidence01: 0.8,
+      precisionM: 2,
+      encodedConfidence01: 0.8,
+      encodedPrecisionM: 2,
+      source: 'directPerception' as const,
+    };
+    memory.spatial.push(base);
+    const hashA = hashWorldState(simulation);
+
+    memory.spatial[memory.spatial.length - 1] = { ...base, encodedConfidence01: 0.3 };
+    const hashB = hashWorldState(simulation);
+
+    expect(hashA).not.toBe(hashB);
     simulation.dispose();
   });
 
@@ -148,7 +182,7 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
       id: allocateBeliefId(knowledge),
       subjectConcept: 'berry:red:round',
       property: 'edible',
-      value: 'likely',
+      value: { kind: 'probability', value01: 0.6 },
       confidence01: 0.6,
       evidenceCount: 1,
       lastUpdatedTick: 0,

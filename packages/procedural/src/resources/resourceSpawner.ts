@@ -204,6 +204,8 @@ export class ResourceSpawner {
       foodToxicity01: definition.food?.toxicity01 ?? 0,
       harvestServings: Math.max(1, definition.harvestServings ?? 1),
       renewalMode: definition.renewalMode ?? 'regrowWhenDepleted',
+      perceptualConceptId: definition.perceptualConceptId ?? definition.id,
+      rememberable: definition.interactive,
     };
   }
 

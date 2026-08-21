@@ -501,9 +501,15 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     spatialPrecisionGrowthPerSecondM: 0.0054,
     maxSpatialPrecisionM: 50,
     minSpatialConfidence01: 0.05,
-    // Plus généreux que l'ancien maxFoodEntries+maxWaterEntries (16+4=20) : ce tableau
-    // unique couvre désormais aussi abris, humains, dangers, lieux notables.
-    maxSpatialEntries: 24,
+    // Bug corrigé après mesure (Phase 3.2, correction immédiate) : la mémoire cognitive
+    // couvre maintenant TOUTE ressource visible, pas seulement l'alimentaire (voir la
+    // doc de `PerceptionSystem`) — une seule passe de perception près d'une forêt dense
+    // produit facilement 20 à 40 observations. À 24, l'éviction (à confiance égale, la
+    // plus ancienne part en premier) purgeait le souvenir d'eau AVANT MÊME la fin de la
+    // passe qui venait de le créer — mesuré : un souvenir d'eau créé en tout début de
+    // scan disparaissait avant le 25ᵉ arbre observé dans le MÊME tick. Ce plafond doit
+    // dépasser largement ce qu'une seule passe peut produire, tout en restant borné.
+    maxSpatialEntries: 80,
   },
   pathfinding: {
     // 2 m de tuile : un humain fait ~1,6 pas par tuile, la résolution suit la géographie

@@ -119,6 +119,21 @@ export interface ResourceDefinition {
 
   /** Voir la doc de `ResourceRenewalMode`. Absent = `regrowWhenDepleted`. */
   readonly renewalMode?: ResourceRenewalMode;
+
+  /**
+   * Ce à quoi cette ressource RESSEMBLE pour un observateur — distinct de `id`, qui est
+   * la vérité moteur. Absent = `id` (comportement par défaut : chaque définition a sa
+   * propre apparence). Le renseigner explicitement permet à PLUSIEURS définitions de
+   * partager la même apparence perçue — deux champignons visuellement proches mais de
+   * toxicité différente porteraient le même `perceptualConceptId` tout en restant deux
+   * `ResourceDefinition` distinctes : un humain qui n'a jamais goûté ni l'un ni l'autre
+   * ne peut pas les distinguer avant expérience (sous-phase 3.3+).
+   *
+   * Projeté sur `ResourceSpawn.perceptualConceptId` (`@civ/procedural`) — la simulation
+   * ne lit jamais `definitionId` comme connaissance sémantique, seulement cette
+   * projection (CLAUDE.md règle 2 : la simulation n'importe jamais `content`).
+   */
+  readonly perceptualConceptId?: string;
 }
 
 export interface ResourceSuitabilityInput {

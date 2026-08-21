@@ -1,6 +1,7 @@
 import type { EntityId } from '@civ/shared';
 import type {
   ActivityComponent,
+  Belief,
   CognitiveKnowledgeComponent,
   CognitiveMemoryComponent,
   HumanCognitionComponent,
@@ -353,8 +354,12 @@ function fnv1aHashState(state: CanonicalState): string {
         .map(
           (entry) =>
             `${entry.id}:${entry.kind}@${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}:` +
-            `${q(entry.confidence01)}:${q(entry.precisionM)}:${entry.source}:` +
-            `${entry.subjectConceptId ?? 'n'}:` +
+            `${q(entry.confidence01)}:${q(entry.precisionM)}:` +
+            // encodedConfidence01/encodedPrecisionM déterminent la trajectoire future de
+            // ForgettingSystem : deux souvenirs identiques aujourd'hui mais avec des
+            // baselines différentes divergeront au prochain tick de décroissance.
+            `${q(entry.encodedConfidence01)}:${q(entry.encodedPrecisionM)}:` +
+            `${entry.source}:${entry.subjectConceptId ?? 'n'}:` +
             `${entry.worldRef ? `${entry.worldRef.resourceId}:${entry.worldRef.ownerChunkKey}:${entry.worldRef.localId}` : 'n'}`,
         )
         .join(';');
@@ -376,10 +381,20 @@ function fnv1aHashState(state: CanonicalState): string {
     }
 
     if (cognitiveKnowledge) {
+      const beliefValue = (value: Belief['value']): string => {
+        switch (value.kind) {
+          case 'probability':
+            return `probability:${q(value.value01)}`;
+          case 'category':
+            return `category:${value.code}`;
+          case 'scalar':
+            return `scalar:${q(value.value)}:${value.unit ?? 'n'}`;
+        }
+      };
       const beliefs = cognitiveKnowledge.beliefs
         .map(
           (belief) =>
-            `${belief.id}:${belief.subjectConcept}:${belief.property}:${belief.value}:` +
+            `${belief.id}:${belief.subjectConcept}:${belief.property}:${beliefValue(belief.value)}:` +
             `${q(belief.confidence01)}:${belief.evidenceCount}:${belief.lastUpdatedTick}`,
         )
         .join(';');

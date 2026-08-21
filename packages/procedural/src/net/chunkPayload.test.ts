@@ -56,6 +56,8 @@ function spawn(
     foodToxicity01: 0,
     harvestServings: 1,
     renewalMode: 'regrowWhenDepleted' as const,
+    perceptualConceptId: 'tree_broadleaf',
+    rememberable: false,
   };
 }
 

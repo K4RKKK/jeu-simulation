@@ -13,11 +13,15 @@ import { PerceptionSystem } from './perceptionSystem.js';
  * La perception est le seul chemin du savoir spatial : ce que l'humain n'a pas vu de ses
  * yeux ne figure jamais dans sa mémoire. Le système est déterministe — aucun tirage.
  */
-function perceptionSimulation(seed: string, population = 1): Simulation {
+function perceptionSimulation(
+  seed: string,
+  population = 1,
+  extraConfig?: ConstructorParameters<typeof Simulation>[0]['config'],
+): Simulation {
   return new Simulation({
     seed,
     population,
-    config: { time: { gameSecondsPerTick: 1 } },
+    config: { time: { gameSecondsPerTick: 1 }, ...extraConfig },
     systems: [new PerceptionSystem()],
   });
 }
@@ -37,7 +41,7 @@ function transformOf(simulation: Simulation): TransformComponent {
 /** Pose l'humain sur la première ressource du chunk répondant au prédicat. */
 function standOnResource(
   simulation: Simulation,
-  matches: (spawn: { foodKcal: number; foodToxicity01: number }) => boolean,
+  matches: (spawn: { foodKcal: number; foodToxicity01: number; rememberable: boolean }) => boolean,
 ): {
   id: string;
   ownerChunkKey: string;
@@ -117,15 +121,21 @@ describe('PerceptionSystem', () => {
   });
 
   it('écrit aussi un souvenir spatial générique pour une rive vue', () => {
-    const simulation = perceptionSimulation('perception-cognitive-water');
+    // Même seed que « se souvient de la rive » : garantit un rivage visible dans le rayon
+    // système (visionRangeM), ce qui rend le test robuste quelle que soit la config.
+    // maxSpatialEntries élevé : la rive est ajoutée avant les ressources ; sans cette
+    // limite haute, la 81ème ressource l'évincerait (même confiance → FIFO).
+    const simulation = perceptionSimulation('perception-water', 1, {
+      cognition: { maxSpatialEntries: 500 },
+    });
     simulation.start();
     const world = simulation.world;
     const transform = transformOf(simulation);
     const shore = scanForShorePoint(
       transform.x,
       transform.z,
-      200,
-      8,
+      simulation.config.perception.visionRangeM,
+      simulation.config.perception.waterScanStepM,
       simulation.config.needs.search.drinkShoreDistanceM,
       (x, z) => world.isWalkable(x, z),
       (x, z) => world.hydrology.distanceToWaterMeters(x, z),
@@ -150,6 +160,54 @@ describe('PerceptionSystem', () => {
 
     const ids = memoryOf(simulation).food.map((entry) => entry.resourceId);
     expect(ids).not.toContain(stone.id);
+    simulation.dispose();
+  });
+
+  /**
+   * Bug corrigé (Phase 3.2, correction immédiate après relecture) : la mémoire
+   * cognitive ne recevait initialement que les ressources comestibles
+   * (`foodKcal > 0`) — de l'omniscience déguisée (une pierre visible n'existait
+   * simplement pas pour la cognition). Une ressource non alimentaire visible doit
+   * entrer dans `CognitiveMemory`, même si elle n'entre jamais dans l'ancien
+   * `Memory.food`.
+   */
+  it('une ressource non alimentaire visible entre dans CognitiveMemory mais jamais Memory.food', () => {
+    // maxSpatialEntries élevé : évite l'éviction quand le chunk contient plus d'entrées
+    // que la limite par défaut (80), ce qui ferait sortir la pierre cible du tableau.
+    const simulation = perceptionSimulation('perception-cognitive-stone', 1, {
+      cognition: { maxSpatialEntries: 500 },
+    });
+    simulation.start();
+    // `rememberable` = interactive : exclut les ressources décoratives (non mémorisables).
+    const stone = standOnResource(
+      simulation,
+      (candidate) => candidate.foodKcal === 0 && candidate.rememberable,
+    );
+
+    simulation.step(6);
+
+    expect(memoryOf(simulation).food.map((entry) => entry.resourceId)).not.toContain(stone.id);
+
+    const entry = cognitiveMemoryOf(simulation).spatial.find(
+      (candidate) => candidate.worldRef?.resourceId === stone.id,
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.kind).toBe('resource');
+    simulation.dispose();
+  });
+
+  /** kcal/toxicité sont une vérité moteur cachée : elles ne doivent jamais fuiter dans la cognition. */
+  it('ne copie jamais kcal/toxicité dans la mémoire cognitive', () => {
+    const simulation = perceptionSimulation('perception-cognitive-no-leak');
+    simulation.start();
+    standOnResource(simulation, (candidate) => candidate.foodKcal > 0);
+
+    simulation.step(6);
+
+    for (const entry of cognitiveMemoryOf(simulation).spatial) {
+      expect(entry).not.toHaveProperty('foodKcal');
+      expect(entry).not.toHaveProperty('foodToxicity01');
+    }
     simulation.dispose();
   });
 

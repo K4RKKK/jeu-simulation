@@ -1,21 +1,10 @@
 import type { EntityId } from '@civ/shared';
 import type { ConceptId, MemoryId } from '../cognition/ids.js';
 import type { ObservationSource } from '../cognition/observation.js';
+import type { WorldRef } from '../cognition/worldRef.js';
 import { defineComponent } from '../core/componentType.js';
 
-/**
- * Référence technique vers l'objet du monde qui a produit un souvenir — sert à
- * revalider l'objet (existe-t-il encore ? a-t-il changé ?), jamais une connaissance de
- * l'humain lui-même. La connaissance sémantique, c'est `SpatialMemoryEntry.subjectConceptId`
- * (« ceci est le type de baie que je reconnais »), pas `worldRef` (« ceci est exactement
- * la ressource #348 du chunk 2:3 »). Un humain ne pense jamais en identifiants de chunk.
- */
-export interface WorldRef {
-  readonly type: 'resource';
-  readonly resourceId: string;
-  readonly ownerChunkKey: string;
-  readonly localId: number;
-}
+export type { WorldRef };
 
 /**
  * Souvenir d'un lieu — eau, ressource, abri, humain, danger, endroit notable.
@@ -25,6 +14,15 @@ export interface WorldRef {
  * `water` ne soit consolidé côté croyances — 3.3). `precisionM` reflète l'incertitude du
  * souvenir, pas une position GPS parfaite : elle est censée croître avec le temps écoulé
  * depuis `lastSeenTick` (logique de décroissance ajoutée en 3.2, `ForgettingSystem`).
+ *
+ * `confidence01`/`precisionM` sont les valeurs COURANTES (déjà décrues par
+ * `ForgettingSystem` le cas échéant) — c'est ce que lisent les futurs consommateurs.
+ * `encodedConfidence01`/`encodedPrecisionM` sont la valeur de BASE au moment de la
+ * (re)perception, à laquelle `decaySpatialMemory` revient à chaque recalcul. Bug évité
+ * par cette séparation : sans elle, décroître systématiquement depuis la confiance
+ * fraîche PAR DÉFAUT (`CognitionConfig.freshSpatialConfidence01`) aurait artificiellement
+ * REHAUSSÉ un souvenir encodé à une confiance plus basse (ex. une information sociale
+ * reçue à confiance 0,4 — 3.9) jusqu'à la confiance d'une perception directe.
  */
 export interface SpatialMemoryEntry {
   readonly id: MemoryId;
@@ -34,6 +32,8 @@ export interface SpatialMemoryEntry {
   lastSeenTick: number;
   confidence01: number;
   precisionM: number;
+  encodedConfidence01: number;
+  encodedPrecisionM: number;
   source: ObservationSource;
   subjectConceptId?: ConceptId;
   worldRef?: WorldRef;
@@ -79,9 +79,8 @@ export interface SocialMemoryEntry {
  * `allocateMemoryId` ci-dessous et la doc de `cognition/ids.ts`) — jamais d'aléa.
  *
  * Toujours créée vide à la naissance (`HumanFactory.create`) ; remplie par les systèmes
- * de perception à partir de 3.2. Les bornes de taille (nombre max d'entrées) arriveront
- * en config au même moment qu'un système les fera réellement respecter — inutile de les
- * introduire ici sans consommateur.
+ * de perception à partir de 3.2. Le nombre maximal d'entrées est contrôlé par
+ * `CognitionConfig.maxSpatialEntries` et appliqué par `rememberSpatial`.
  */
 export interface CognitiveMemoryComponent {
   nextMemoryId: MemoryId;

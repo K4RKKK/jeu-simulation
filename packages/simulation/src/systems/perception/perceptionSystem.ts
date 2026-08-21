@@ -6,6 +6,7 @@ import type {
   TransformComponent,
 } from '../../components/index.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
+import { observeResource, observeShore } from '../../cognition/observationBuilder.js';
 import { rememberSpatial } from '../../cognition/spatialMemoryModel.js';
 import { distance2D } from '../../core/math.js';
 import type { SimulationSystem, SystemUpdateContext } from '../../core/system.js';
@@ -25,21 +26,30 @@ import {
  *
  * - **La rive** se voit de loin : une spirale déterministe autour de la position, relancée
  *   seulement après un déplacement suffisant (rester debout ne révèle rien de nouveau).
- * - **La nourriture** se repère de près : les chunks couverts par le rayon de vision sont
+ * - **Les ressources** se repèrent de près : les chunks couverts par le rayon de vision sont
  *   relus — via le cache du monde, seule une entrée de chunk nouvellement découverte paie
- *   la génération — et leurs ressources comestibles sont mémorisées. Leur toxicité, elle,
- *   n'entre jamais en mémoire : elle se découvre en mangeant.
+ *   la génération — et TOUT individu praticable y est perçu, alimentaire ou non (voir
+ *   Phase 3.2 ci-dessous). Toxicité et kcal exacts n'entrent jamais en mémoire : ils se
+ *   découvrent en mangeant.
  *
  * Rien n'est tiré au hasard ici : les scans sont des fonctions déterministes de la
  * position et du tick. Le travail est réparti en cohortes stables sur l'ancien intervalle
  * `medium` : chaque individu conserve la même cadence maximale de perception, mais le
  * serveur n'examine plus toute la population dans le même tick.
  *
- * Depuis la Phase 3.2, chaque scan écrit AUSSI dans `CognitiveMemory.spatial` (mémoire
- * générique, voir `cognition/spatialMemoryModel.ts`) — même donnée perçue, deux
- * représentations en parallèle. `NeedSatisfactionSystem` continue de décider depuis
- * `Memory` (ci-dessus), pas encore de `CognitiveMemory` : migration progressive
- * délibérée (P3.21), la bascule attend l'Utility AI (3.4+).
+ * Depuis la Phase 3.2, chaque scan produit AUSSI une `Observation` (voir
+ * `cognition/observationBuilder.ts`) écrite dans `CognitiveMemory.spatial` — même scan,
+ * deux représentations en parallèle. Bug corrigé après relecture (Phase 3.2, correction
+ * immédiate) : la première version ne mémorisait dans `CognitiveMemory` que les
+ * ressources dont `foodKcal > 0`, et utilisait `definitionId` (une vérité moteur) comme
+ * concept perçu — de l'omniscience déguisée en mémoire cognitive. Une pierre, du silex
+ * ou une branche visibles doivent entrer dans `CognitiveMemory` au même titre qu'un
+ * buisson à baies ; seul l'ancien `Memory.food` (ci-dessous) reste filtré sur le
+ * comestible, car c'est tout ce que `NeedSatisfactionSystem` sait consommer aujourd'hui.
+ * `subjectConceptId` vient de `ResourceSpawn.perceptualConceptId` (apparence projetée
+ * depuis `content`), jamais de `definitionId` directement. `NeedSatisfactionSystem`
+ * continue de décider depuis `Memory`, pas encore de `CognitiveMemory` : migration
+ * progressive délibérée (P3.21), la bascule attend l'Utility AI (3.4+).
  */
 export class PerceptionSystem implements SimulationSystem {
   readonly name = 'PerceptionSystem';
@@ -60,18 +70,30 @@ export class PerceptionSystem implements SimulationSystem {
     const cadenceTicks = Math.max(1, ctx.config.scheduler.intervals.medium);
     const activePhase = positiveModulo(ctx.tick - 1, cadenceTicks);
 
-    // Plusieurs humains proches relisent souvent les mêmes chunks pendant ce tick. Le
-    // monde cache déjà la génération, mais filtrer les ressources et tester leur terrain
-    // restait refait pour chacun. Ce cache ne vit que pendant l'update : il ne peut donc
-    // jamais masquer une mutation effectuée par un autre système au tick suivant.
-    const edibleByChunk = new Map<string, readonly ResourceSpawn[]>();
+    // Deux caches qui ne vivent que pendant l'update (jamais de masquage de mutations
+    // d'un tick à l'autre) :
+    // - `memorableByChunk` : toutes les ressources mémorables d'un chunk (rememberable =
+    //   interactive), sans filtre de praticabilité — un humain peut voir une baie sur une
+    //   pente inaccessible et en garder un souvenir cognitif. Alimente `CognitiveMemory`.
+    // - `walkableByChunk` : sous-ensemble praticable (`isWalkable`). Alimente `Memory.food`
+    //   pour que `NeedSatisfactionSystem` ne planifie pas d'aller manger un objet hors d'atteinte.
+    const memorableByChunk = new Map<string, readonly ResourceSpawn[]>();
+    const walkableByChunk = new Map<string, readonly ResourceSpawn[]>();
 
     ctx.entities.each(
       [Transform, Memory, CognitiveMemory],
       (entity, transform, memory, cognitiveMemory) => {
         if (positiveModulo(entity - 1, cadenceTicks) !== activePhase) return;
         this.perceiveWater(ctx, transform, memory, memoryConfig, cognitiveMemory);
-        this.perceiveFood(ctx, transform, memory, memoryConfig, edibleByChunk, cognitiveMemory);
+        this.perceiveResources(
+          ctx,
+          transform,
+          memory,
+          memoryConfig,
+          memorableByChunk,
+          walkableByChunk,
+          cognitiveMemory,
+        );
       },
     );
   }
@@ -109,25 +131,21 @@ export class PerceptionSystem implements SimulationSystem {
       // de travail dupliqué. `Memory` (ci-dessus) reste la seule source consultée par
       // `NeedSatisfactionSystem` jusqu'à ce que l'Utility AI (3.4+) bascule sur celle-ci ;
       // coexistence délibérée, voir la doc de `CognitiveMemoryComponent`.
-      rememberSpatial(
-        cognitiveMemory,
-        { kind: 'water', x: point.x, z: point.z, source: 'selfExperience' },
-        ctx.tick,
-        ctx.config.cognition,
-      );
+      rememberSpatial(cognitiveMemory, observeShore(point, ctx.tick), ctx.config.cognition);
     }
   }
 
-  private perceiveFood(
+  private perceiveResources(
     ctx: SystemUpdateContext,
     transform: TransformComponent,
     memory: MemoryComponent,
     config: PerceptionMemoryConfig,
-    edibleByChunk: Map<string, readonly ResourceSpawn[]>,
+    memorableByChunk: Map<string, readonly ResourceSpawn[]>,
+    walkableByChunk: Map<string, readonly ResourceSpawn[]>,
     cognitiveMemory: CognitiveMemoryComponent,
   ): void {
     // Bug corrigé : rescanner au changement de CHUNK plutôt qu'à la distance parcourue
-    // laissait un individu « aveugle » à toute nourriture entrée dans son rayon de
+    // laissait un individu « aveugle » à toute ressource entrée dans son rayon de
     // vision tant qu'il n'avait pas franchi une frontière de chunk — jusqu'à la
     // diagonale entière d'un chunk (~90 m avec les valeurs par défaut) pour un rayon de
     // vision de 32 m. Même gate que `perceiveWater`, par cohérence et correction.
@@ -153,56 +171,56 @@ export class PerceptionSystem implements SimulationSystem {
       for (let cz = minZ; cz <= maxZ; cz++) {
         if (!ctx.world.bounds.containsChunk({ x: cx, z: cz })) continue;
         const key = `${cx}:${cz}`;
-        let edible = edibleByChunk.get(key);
-        if (edible === undefined) {
-          edible = ctx.world
+
+        // Cache mémorable : ressources `rememberable` (= interactive), sans filtre de
+        // praticabilité — la vue n'exige pas que le chemin existe.
+        let memorable = memorableByChunk.get(key);
+        if (memorable === undefined) {
+          memorable = ctx.world
             .generateChunk({ x: cx, z: cz })
-            .resources.filter(
-              (spawn) => spawn.foodKcal > 0 && ctx.world.isWalkable(spawn.x, spawn.z),
-            );
-          edibleByChunk.set(key, edible);
+            .resources.filter((s) => s.rememberable);
+          memorableByChunk.set(key, memorable);
         }
-        for (const spawn of edible) {
+
+        // Cache praticable : sous-ensemble pour `Memory.food` seulement, afin que
+        // `NeedSatisfactionSystem` ne planifie pas un trajet vers un objet hors d'atteinte.
+        let walkable = walkableByChunk.get(key);
+        if (walkable === undefined) {
+          walkable = memorable.filter((s) => ctx.world.isWalkable(s.x, s.z));
+          walkableByChunk.set(key, walkable);
+        }
+
+        for (const spawn of memorable) {
           const dx = spawn.x - transform.x;
           const dz = spawn.z - transform.z;
           if (dx * dx + dz * dz > radiusSquared) continue;
-          rememberFood(
-            memory,
-            {
-              resourceId: spawn.id,
-              definitionId: spawn.definitionId,
-              ownerChunkKey: spawn.ownerChunkKey,
-              localId: spawn.localId,
-              x: spawn.x,
-              z: spawn.z,
-              foodKcal: spawn.foodKcal,
-            },
-            ctx.tick,
-            config,
-          );
-          // `subjectConceptId = definitionId` : le type perçu (« ceci est un buisson à
-          // baies ») sert directement de concept — pas de taxonomie séparée à inventer
-          // pour la Phase 3.2, `definitionId` joue déjà ce rôle dans l'ancienne mémoire
-          // (voir la doc de `FoodMemoryEntry.definitionId`). `worldRef` est la référence
-          // technique pour revalider l'objet, jamais une connaissance en soi.
-          rememberSpatial(
-            cognitiveMemory,
-            {
-              kind: 'resource',
-              x: spawn.x,
-              z: spawn.z,
-              subjectConceptId: spawn.definitionId,
-              worldRef: {
-                type: 'resource',
+
+          rememberSpatial(cognitiveMemory, observeResource(spawn, ctx.tick), ctx.config.cognition);
+        }
+
+        for (const spawn of walkable) {
+          const dx = spawn.x - transform.x;
+          const dz = spawn.z - transform.z;
+          if (dx * dx + dz * dz > radiusSquared) continue;
+
+          // Ancienne mémoire nourriture (`NeedSatisfactionSystem`) : filtrée sur le
+          // comestible et la praticabilité, inchangée.
+          if (spawn.foodKcal > 0) {
+            rememberFood(
+              memory,
+              {
                 resourceId: spawn.id,
+                definitionId: spawn.definitionId,
                 ownerChunkKey: spawn.ownerChunkKey,
                 localId: spawn.localId,
+                x: spawn.x,
+                z: spawn.z,
+                foodKcal: spawn.foodKcal,
               },
-              source: 'selfExperience',
-            },
-            ctx.tick,
-            ctx.config.cognition,
-          );
+              ctx.tick,
+              config,
+            );
+          }
         }
       }
     }
