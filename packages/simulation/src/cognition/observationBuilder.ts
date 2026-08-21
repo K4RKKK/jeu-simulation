@@ -25,6 +25,7 @@ export function observeResource(
     tick,
     source,
     subjectConceptId: spawn.perceptualConceptId,
+    foodCandidate: spawn.foodCandidate,
     worldRef: {
       type: 'resource',
       resourceId: spawn.id,

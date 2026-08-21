@@ -104,6 +104,8 @@ export interface ResourceDefinition {
    * manipulera. Cette distinction évite de promettre une interaction qui n'existe pas.
    */
   readonly interactive: boolean;
+  /** Affordance visible : l'objet semble pouvoir être essayé comme nourriture, sans garantir calories ni innocuité. */
+  readonly foodCandidate?: boolean;
 
   readonly food?: FoodProperties;
 

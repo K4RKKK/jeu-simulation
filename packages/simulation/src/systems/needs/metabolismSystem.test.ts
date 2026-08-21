@@ -133,10 +133,12 @@ describe('MetabolismSystem', () => {
       resourceId: null,
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
+      resourceConceptId: null,
       untilTick: -1,
       mealMaxGain: 1,
       poisoningUntilTick: simulation.clock.currentTick + 7200,
       poisoningToxicity01: 0.95,
+      currentMealCausedPoisoning: false,
       pathFailedAtTick: -1,
     });
 

@@ -150,6 +150,15 @@ export interface WanderConfig {
  * headless. Les durées (survie, recharge) sont celles d'un adulte moyen au repos.
  */
 export interface NeedsConfig {
+  decision: {
+    epsilon: number;
+    restWeight: number;
+    drinkWeight: number;
+    eatWeight: number;
+    exploreBaseWeight: number;
+    noMemoryPenalty: number;
+    recentPoisoningWindowSeconds: number;
+  };
   hydration: {
     /** Perte d'hydratation au repos dans un climat tempéré : ~3 jours de survie. */
     drainPerSecond: number;
@@ -246,6 +255,8 @@ export interface PerceptionConfig {
    * côté.
    */
   foodRescanMoveThresholdM: number;
+  /** Temps maximal sans nouveau scan, mÃªme immobile. */
+  maxRescanSeconds: number;
   /**
    * Champs hérités de Phase 3.1-3.2 : plus lus depuis 3.5 (les souvenirs vivent dans
    * `CognitiveMemory`, dont la capacité est réglée par `cognition.maxSpatialEntries` et
@@ -444,6 +455,15 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     cautiousMaxSlope01: 0.12,
   },
   needs: {
+    decision: {
+      epsilon: 0.05,
+      restWeight: 4.5,
+      drinkWeight: 1.4,
+      eatWeight: 0.8,
+      exploreBaseWeight: 0.5,
+      noMemoryPenalty: 0.15,
+      recentPoisoningWindowSeconds: 1800,
+    },
     hydration: {
       drainPerSecond: 1 / 259200,
       heatDrainMultiplier: 1.5,
@@ -492,6 +512,7 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     waterScanStepM: 12,
     waterRescanMoveThresholdM: 15,
     foodRescanMoveThresholdM: 15,
+    maxRescanSeconds: 60,
     // Legacy Phase 3.1-3.2, non lus depuis 3.5 (voir le champ ci-dessus).
     foodMemoryTtlSeconds: 3600,
     waterMemoryTtlSeconds: 7200,

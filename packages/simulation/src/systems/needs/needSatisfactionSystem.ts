@@ -30,7 +30,7 @@ import {
   harvestInteractiveResource,
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
-import { learnFoodEdibility, learnedEdibility01 } from '../../cognition/foodBeliefModel.js';
+import { effectiveEdibility01, learnFoodEdibility } from '../../cognition/foodBeliefModel.js';
 import { nearestKnownFood, nearestKnownWater } from '../../cognition/spatialMemoryQuery.js';
 import {
   pickBestOption,
@@ -87,10 +87,12 @@ export class NeedSatisfactionSystem implements SimulationSystem {
             resourceId: null,
             resourceOwnerChunkKey: null,
             resourceLocalId: null,
+            resourceConceptId: null,
             untilTick: -1,
             mealMaxGain: 1,
             poisoningUntilTick: -1,
             poisoningToxicity01: 0,
+            currentMealCausedPoisoning: false,
             pathFailedAtTick: -1,
           });
 
@@ -153,24 +155,33 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       transform.z,
       (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
       (resourceId) => ctx.world.delta.isDepleted(resourceId),
-      (entry) => learnedEdibility01(knowledge, entry.subjectConceptId) ?? 1,
+      (entry) => effectiveEdibility01(knowledge, entry.subjectConceptId) ?? 1,
+    );
+    const poisoningWindowTicks = Math.ceil(
+      config.decision.recentPoisoningWindowSeconds / ctx.config.time.gameSecondsPerTick,
     );
     const recentPoisonings = memory.episodic.filter(
       (entry) =>
-        entry.eventType === 'food.eaten' && entry.outcome === 'physiology.poisoning_started',
+        entry.eventType === 'food.eaten' &&
+        entry.outcome === 'physiology.poisoning_started' &&
+        entry.tick >= ctx.tick - poisoningWindowTicks &&
+        (knownFood === null || entry.subjectConcept === knownFood.entry.subjectConceptId),
     ).length;
 
     const { winner, reason } = pickBestOption([
-      scoreDrink(needs, knownWater !== null, config.hydration.criticalThreshold),
+      scoreDrink(needs, knownWater !== null, config.hydration.criticalThreshold, config.decision),
       scoreEat(
         needs,
         knownFood !== null,
         recentPoisonings,
-        knownFood === null ? null : learnedEdibility01(knowledge, knownFood.entry.subjectConceptId),
+        knownFood === null
+          ? null
+          : effectiveEdibility01(knowledge, knownFood.entry.subjectConceptId),
         config.hunger.criticalThreshold,
+        config.decision,
       ),
-      scoreRest(needs, config.energy.exhaustedThreshold),
-      scoreExplore(personality),
+      scoreRest(needs, config.energy.exhaustedThreshold, config.decision),
+      scoreExplore(personality, config.decision),
     ]);
     cognition.decisionReason = reason;
 
@@ -239,7 +250,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       transform.z,
       (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
       (resourceId) => ctx.world.delta.isDepleted(resourceId),
-      (entry) => learnedEdibility01(knowledge, entry.subjectConceptId) ?? 1,
+      (entry) => effectiveEdibility01(knowledge, entry.subjectConceptId) ?? 1,
     );
     if (!chosen) return;
     const { entry, spawn } = chosen;
@@ -253,11 +264,12 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       'seekFood',
       entry.x,
       entry.z,
-      `part chercher de la nourriture (se souvient de ${spawn.definitionId} à ${distance} m, ${describeConfidence(entry.confidence01)})`,
+      `part chercher de la nourriture (se souvient d'une ressource ${entry.subjectConceptId ?? 'familière'} à ${distance} m, ${describeConfidence(entry.confidence01)})`,
     );
     state.resourceId = spawn.id;
     state.resourceOwnerChunkKey = spawn.ownerChunkKey;
     state.resourceLocalId = spawn.localId;
+    state.resourceConceptId = entry.subjectConceptId ?? null;
   }
 
   private onArrival(
@@ -354,6 +366,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     }
     state.action = 'eat';
     state.mealMaxGain = mealMaxGain;
+    state.currentMealCausedPoisoning = toxicity > ctx.config.needs.toxicity.effectThreshold01;
     // La durée elle-même reflète aussi la taille du repas : une petite baie ne retient
     // pas un humain aussi longtemps qu'un repas complet, même si la faim est encore loin
     // de son objectif — sinon le plancher `minEatSeconds` referait gagner plus de faim
@@ -412,6 +425,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceId = null;
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
+    state.resourceConceptId = null;
     state.untilTick = this.durationEndTick(
       ctx,
       config.restTarget - needs.energy,
@@ -465,8 +479,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       // `poisoningToxicity01` seul ne suffit pas : il n'est jamais remis à zéro et reste à
       // la valeur d'un empoisonnement passé, ce qui étiquetterait à tort tout repas sain
       // ultérieur comme un empoisonnement.
-      const poisoned = state.poisoningUntilTick >= ctx.tick;
-      const conceptId = this.foodConceptAt(memory, state);
+      const poisoned = state.currentMealCausedPoisoning;
+      const conceptId = state.resourceConceptId;
       rememberEpisodic(
         memory,
         {
@@ -507,6 +521,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceId = null;
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
+    state.resourceConceptId = null;
+    state.currentMealCausedPoisoning = false;
     state.untilTick = -1;
     activity.kind = 'idle';
     activity.reason =
@@ -516,20 +532,6 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           ? `repu (a mangé)`
           : `reposé (énergie ${needs.energy.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
-  }
-
-  private foodConceptAt(
-    memory: CognitiveMemoryComponent,
-    state: NeedsStateComponent,
-  ): string | null {
-    if (state.resourceId === null || state.resourceOwnerChunkKey === null) return null;
-    return (
-      memory.spatial.find(
-        (entry) =>
-          entry.worldRef?.resourceId === state.resourceId &&
-          entry.worldRef.ownerChunkKey === state.resourceOwnerChunkKey,
-      )?.subjectConceptId ?? null
-    );
   }
 
   private startTravel(

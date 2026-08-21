@@ -21,6 +21,20 @@ export function learnedEdibility01(
   return belief?.value.kind === 'probability' ? belief.value.value01 : null;
 }
 
+/** Rend une croyance peu assurée vers l'a priori neutre de 0,5. */
+export function effectiveEdibility01(
+  knowledge: CognitiveKnowledgeComponent,
+  conceptId: ConceptId | undefined,
+): number | null {
+  if (conceptId === undefined) return null;
+  const belief = knowledge.beliefs.find(
+    (candidate) =>
+      candidate.subjectConcept === conceptId && candidate.property === FOOD_EDIBLE_PROPERTY,
+  );
+  if (belief?.value.kind !== 'probability') return null;
+  return 0.5 + belief.confidence01 * (belief.value.value01 - 0.5);
+}
+
 /**
  * Consolide une ingestion vécue. La moyenne empirique garde le modèle interprétable :
  * chaque repas sain ajoute 1, chaque empoisonnement ajoute 0, sans révéler la toxicité

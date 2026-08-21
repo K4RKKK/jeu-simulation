@@ -71,7 +71,7 @@ export function nearestKnownWater(
  * buisson mangé par un voisin ne vaut plus le voyage. Retourne `{ entry, spawn }` — le
  * décideur peut lire `worldRef` ET la valeur nutritionnelle du spawn en un seul aller.
  */
-export function nearestKnownFood<Spawn extends { foodKcal: number }>(
+export function nearestKnownFood<Spawn>(
   spatial: readonly SpatialMemoryEntry[],
   fromX: number,
   fromZ: number,
@@ -83,11 +83,11 @@ export function nearestKnownFood<Spawn extends { foodKcal: number }>(
   let bestScore = Number.POSITIVE_INFINITY;
   for (const entry of spatial) {
     if (entry.kind !== 'resource') continue;
+    if (entry.foodCandidate !== true) continue;
     if (!entry.worldRef) continue;
     if (isDepleted(entry.worldRef.resourceId)) continue;
     const spawn = resolveSpawn(entry.worldRef);
     if (!spawn) continue;
-    if (spawn.foodKcal <= 0) continue;
     // Une préférence apprise affine un souvenir déjà valide, elle ne le rend jamais
     // impossible : à faim extrême, une piste très suspecte reste une option de survie.
     const s = score(entry, fromX, fromZ) / Math.max(0.1, preference(entry, spawn));

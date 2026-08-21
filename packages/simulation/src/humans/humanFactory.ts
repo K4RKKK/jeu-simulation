@@ -145,8 +145,10 @@ export class HumanFactory {
     entities.addComponent(entity, Memory, {
       lastFoodScanX: null,
       lastFoodScanZ: null,
+      lastFoodScanTick: null,
       lastWaterScanX: null,
       lastWaterScanZ: null,
+      lastWaterScanTick: null,
     });
 
     // Squelette cognitif (Phase 3.1) : créé vide, comme `Memory` ci-dessus — rempli par

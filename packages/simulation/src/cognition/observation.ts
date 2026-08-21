@@ -56,6 +56,8 @@ export interface Observation {
   readonly source: ObservationSource;
   readonly subjectConceptId?: ConceptId;
   readonly worldRef?: WorldRef;
+  /** Affordance visible, jamais la nutrition ni la toxicité réelles. */
+  readonly foodCandidate?: boolean;
   readonly confidence01?: number;
   readonly precisionM?: number;
 }

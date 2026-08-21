@@ -137,10 +137,12 @@ describe('PathfindingSystem', () => {
       resourceId: null,
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
+      resourceConceptId: null,
       untilTick: -1,
       mealMaxGain: 1,
       poisoningUntilTick: -1,
       poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
       pathFailedAtTick: -1,
     });
 

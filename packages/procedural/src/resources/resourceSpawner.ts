@@ -206,6 +206,7 @@ export class ResourceSpawner {
       renewalMode: definition.renewalMode ?? 'regrowWhenDepleted',
       perceptualConceptId: definition.perceptualConceptId ?? definition.id,
       rememberable: definition.interactive,
+      foodCandidate: definition.foodCandidate ?? false,
     };
   }
 

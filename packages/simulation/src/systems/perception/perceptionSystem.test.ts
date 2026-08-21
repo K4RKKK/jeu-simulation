@@ -285,6 +285,19 @@ describe('PerceptionSystem', () => {
     simulation.dispose();
   });
 
+  it('rescanne à échéance même sans déplacement', () => {
+    const simulation = perceptionSimulation('perception-temporal-gate', 1, {
+      perception: { maxRescanSeconds: 8 },
+    });
+    simulation.start();
+    simulation.step(6);
+    const firstTick = memoryOf(simulation).lastFoodScanTick;
+    simulation.step(12);
+    expect(memoryOf(simulation).lastFoodScanTick).toBeGreaterThan(firstTick!);
+    expect(memoryOf(simulation).lastWaterScanTick).not.toBeNull();
+    simulation.dispose();
+  });
+
   it('est déterministe : même seed, mêmes souvenirs cognitifs', () => {
     const a = perceptionSimulation('perception-det');
     const b = perceptionSimulation('perception-det');

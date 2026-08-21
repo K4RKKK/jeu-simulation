@@ -80,10 +80,15 @@ export class PerceptionSystem implements SimulationSystem {
       memory.lastWaterScanZ === null ||
       distance2D(transform.x, transform.z, memory.lastWaterScanX, memory.lastWaterScanZ) >=
         ctx.config.perception.waterRescanMoveThresholdM;
-    if (!movedEnough) return;
+    const elapsedEnough =
+      memory.lastWaterScanTick === null ||
+      (ctx.tick - memory.lastWaterScanTick) * ctx.config.time.gameSecondsPerTick >=
+        ctx.config.perception.maxRescanSeconds;
+    if (!movedEnough && !elapsedEnough) return;
 
     memory.lastWaterScanX = transform.x;
     memory.lastWaterScanZ = transform.z;
+    memory.lastWaterScanTick = ctx.tick;
 
     const perception = ctx.config.perception;
     const point = scanForShorePoint(
@@ -117,10 +122,15 @@ export class PerceptionSystem implements SimulationSystem {
       memory.lastFoodScanZ === null ||
       distance2D(transform.x, transform.z, memory.lastFoodScanX, memory.lastFoodScanZ) >=
         ctx.config.perception.foodRescanMoveThresholdM;
-    if (!movedEnough) return;
+    const elapsedEnough =
+      memory.lastFoodScanTick === null ||
+      (ctx.tick - memory.lastFoodScanTick) * ctx.config.time.gameSecondsPerTick >=
+        ctx.config.perception.maxRescanSeconds;
+    if (!movedEnough && !elapsedEnough) return;
 
     memory.lastFoodScanX = transform.x;
     memory.lastFoodScanZ = transform.z;
+    memory.lastFoodScanTick = ctx.tick;
 
     const radiusM = ctx.config.perception.visionRangeM;
     const chunkSize = ctx.world.chunkSizeMeters;

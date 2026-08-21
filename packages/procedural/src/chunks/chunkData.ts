@@ -74,6 +74,8 @@ export interface ResourceSpawn {
    * « mémorables » (pierre, buisson à baies, arbre tombé…) entrent en mémoire durable.
    */
   readonly rememberable: boolean;
+  /** Affordance perceptive, distincte de `foodKcal` : un humain peut l'essayer sans connaître le résultat. */
+  readonly foodCandidate: boolean;
 }
 
 /**

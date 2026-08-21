@@ -5,6 +5,7 @@ import {
   migrateSnapshotV9ToV10,
   migrateSnapshotV10ToV11,
   migrateSnapshotV11ToV12,
+  migrateSnapshotV12ToV13,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -153,7 +154,12 @@ function asV10Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): Si
     {
       ...mem,
       spatial: mem.spatial.map((entry) => {
-        const { encodedConfidence01: _ec, encodedPrecisionM: _ep, ...rest } = entry;
+        const {
+          encodedConfidence01: _ec,
+          encodedPrecisionM: _ep,
+          decayAnchorTick: _anchor,
+          ...rest
+        } = entry;
         return { ...rest, source: 'selfExperience' };
       }),
     },
@@ -208,6 +214,29 @@ describe('migrateSnapshotV10ToV11', () => {
       expect(entry.encodedConfidence01).toBe(entry.confidence01);
       expect(entry.encodedPrecisionM).toBe(entry.precisionM);
     }
+  });
+
+  it('ancre la baseline migrée au tick du snapshot pour éviter une double décroissance', () => {
+    const simulation = makeSimulation('migration-v10-anchor');
+    simulation.start();
+    simulation.step(200);
+    const v10 = asV10Snapshot(simulation, simulation.captureSnapshot());
+    simulation.dispose();
+    type SpatialEntry = { lastSeenTick: number; confidence01: number; decayAnchorTick?: number };
+    const entries = (v10.entities.components.CognitiveMemory ?? []) as unknown as [
+      number,
+      { spatial: SpatialEntry[] },
+    ][];
+    const entry = entries[0]![1].spatial[0]!;
+    entry.lastSeenTick = 0;
+    entry.confidence01 = 0.5;
+
+    const migrated = migrateSnapshotV10ToV11(v10);
+    const migratedEntries = (migrated.entities.components.CognitiveMemory ?? []) as unknown as [
+      number,
+      { spatial: SpatialEntry[] },
+    ][];
+    expect(migratedEntries[0]![1].spatial[0]!.decayAnchorTick).toBe(migrated.clock.currentTick);
   });
 
   it('convertit la source selfExperience en directPerception', () => {
@@ -436,5 +465,16 @@ describe('configFingerprint — cognition (v11)', () => {
 
     expect(() => target.restoreSnapshot(snapshot)).toThrow('configuration incompatible');
     target.dispose();
+  });
+});
+
+describe('migrateSnapshotV12ToV13', () => {
+  it('ajoute les ancres et états absents sans modifier le snapshot source', () => {
+    const simulation = makeSimulation('migration-v12-v13');
+    const v12 = { ...simulation.captureSnapshot(), version: 12 as const };
+    simulation.dispose();
+    const migrated = migrateSnapshotV12ToV13(v12);
+    expect(migrated.version).toBe(13);
+    expect(v12.version).toBe(12);
   });
 });

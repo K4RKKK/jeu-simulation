@@ -71,6 +71,7 @@ export function rememberSpatial(
     existing.x = observation.x;
     existing.z = observation.z;
     existing.lastSeenTick = observation.tick;
+    existing.decayAnchorTick = observation.tick;
     existing.confidence01 = encodedConfidence01;
     existing.precisionM = encodedPrecisionM;
     existing.encodedConfidence01 = encodedConfidence01;
@@ -79,6 +80,7 @@ export function rememberSpatial(
     if (observation.subjectConceptId !== undefined)
       existing.subjectConceptId = observation.subjectConceptId;
     if (observation.worldRef !== undefined) existing.worldRef = observation.worldRef;
+    if (observation.foodCandidate !== undefined) existing.foodCandidate = observation.foodCandidate;
     // Rafraîchissement : le souvenir le plus récent part en fin de tableau, comme
     // l'ancienne mémoire nourriture/eau — sert de tri implicite pour l'éviction FIFO.
     memory.spatial.splice(memory.spatial.indexOf(existing), 1);
@@ -92,6 +94,7 @@ export function rememberSpatial(
     x: observation.x,
     z: observation.z,
     lastSeenTick: observation.tick,
+    decayAnchorTick: observation.tick,
     confidence01: encodedConfidence01,
     precisionM: encodedPrecisionM,
     encodedConfidence01,
@@ -101,6 +104,9 @@ export function rememberSpatial(
       ? { subjectConceptId: observation.subjectConceptId }
       : {}),
     ...(observation.worldRef !== undefined ? { worldRef: observation.worldRef } : {}),
+    ...(observation.foodCandidate !== undefined
+      ? { foodCandidate: observation.foodCandidate }
+      : {}),
   };
   memory.spatial.push(entry);
   if (memory.spatial.length > config.maxSpatialEntries) {
@@ -148,7 +154,10 @@ export function decaySpatialMemory(
 
   const kept: SpatialMemoryEntry[] = [];
   for (const entry of memory.spatial) {
-    const elapsedSeconds = Math.max(0, (nowTick - entry.lastSeenTick) * gameSecondsPerTick);
+    const elapsedSeconds = Math.max(
+      0,
+      (nowTick - (entry.decayAnchorTick ?? entry.lastSeenTick)) * gameSecondsPerTick,
+    );
     const halfLives = elapsedSeconds / config.spatialConfidenceHalfLifeSeconds;
     const confidence01 = entry.encodedConfidence01 * 0.5 ** halfLives;
     if (confidence01 < config.minSpatialConfidence01) continue; // purgé, pas conservé flou.

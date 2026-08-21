@@ -48,6 +48,7 @@ function foodMemory(
     encodedPrecisionM: 1,
     source: 'directPerception',
     worldRef,
+    foodCandidate: true,
     ...overrides,
   };
 }
@@ -104,8 +105,11 @@ describe('nearestKnownFood', () => {
     expect(chosen?.entry.id).toBe(1);
   });
 
-  it('écarte une ressource non alimentaire (foodKcal <= 0)', () => {
-    const spatial = [foodMemory(0, 5, 0, 'pierre'), foodMemory(1, 50, 0, 'baie')];
+  it('écarte une ressource qui ne présente pas une affordance alimentaire', () => {
+    const spatial = [
+      foodMemory(0, 5, 0, 'pierre', { foodCandidate: false }),
+      foodMemory(1, 50, 0, 'baie'),
+    ];
     const chosen = nearestKnownFood(
       spatial,
       0,

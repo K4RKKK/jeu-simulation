@@ -53,6 +53,7 @@ function spawn(
     scale: 1,
     rotationY: 0,
     foodKcal: 0,
+    foodCandidate: false,
     foodToxicity01: 0,
     harvestServings: 1,
     renewalMode: 'regrowWhenDepleted' as const,

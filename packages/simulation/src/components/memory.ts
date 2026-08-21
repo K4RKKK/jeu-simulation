@@ -14,9 +14,11 @@ export interface MemoryComponent {
   /** Dernière position depuis laquelle la nourriture a été scrutée. */
   lastFoodScanX: number | null;
   lastFoodScanZ: number | null;
+  lastFoodScanTick: number | null;
   /** Dernière position depuis laquelle l'eau a été scrutée. */
   lastWaterScanX: number | null;
   lastWaterScanZ: number | null;
+  lastWaterScanTick: number | null;
 }
 
 export const Memory = defineComponent<MemoryComponent>('Memory');

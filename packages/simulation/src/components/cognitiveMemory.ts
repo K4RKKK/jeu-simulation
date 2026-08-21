@@ -30,6 +30,7 @@ export interface SpatialMemoryEntry {
   x: number;
   z: number;
   lastSeenTick: number;
+  decayAnchorTick?: number;
   confidence01: number;
   precisionM: number;
   encodedConfidence01: number;
@@ -37,6 +38,7 @@ export interface SpatialMemoryEntry {
   source: ObservationSource;
   subjectConceptId?: ConceptId;
   worldRef?: WorldRef;
+  foodCandidate?: boolean;
 }
 
 /**

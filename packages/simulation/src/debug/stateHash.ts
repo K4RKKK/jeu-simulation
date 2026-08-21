@@ -315,8 +315,10 @@ function fnv1aHashState(state: CanonicalState): string {
       write(
         `ns:${entity}:${needsState.action}:${qOrNull(needsState.targetX)}:${qOrNull(needsState.targetZ)}:` +
           `${needsState.resourceId ?? 'n'}:${needsState.resourceOwnerChunkKey ?? 'n'}:` +
-          `${needsState.resourceLocalId ?? 'n'}:${needsState.untilTick}:${q(needsState.mealMaxGain)}:` +
-          `${needsState.poisoningUntilTick}:${q(needsState.poisoningToxicity01)}:${needsState.pathFailedAtTick}`,
+          `${needsState.resourceLocalId ?? 'n'}:${needsState.resourceConceptId ?? 'n'}:` +
+          `${needsState.untilTick}:${q(needsState.mealMaxGain)}:` +
+          `${needsState.poisoningUntilTick}:${q(needsState.poisoningToxicity01)}:` +
+          `${needsState.currentMealCausedPoisoning ? 1 : 0}:${needsState.pathFailedAtTick}`,
       );
     }
 
@@ -330,9 +332,9 @@ function fnv1aHashState(state: CanonicalState): string {
       write(
         `m:${entity}:` +
           `${memory.lastFoodScanX === null ? 'n' : q(memory.lastFoodScanX)},` +
-          `${memory.lastFoodScanZ === null ? 'n' : q(memory.lastFoodScanZ)}|` +
+          `${memory.lastFoodScanZ === null ? 'n' : q(memory.lastFoodScanZ)},${memory.lastFoodScanTick ?? 'n'}|` +
           `${memory.lastWaterScanX === null ? 'n' : q(memory.lastWaterScanX)},` +
-          `${memory.lastWaterScanZ === null ? 'n' : q(memory.lastWaterScanZ)}`,
+          `${memory.lastWaterScanZ === null ? 'n' : q(memory.lastWaterScanZ)},${memory.lastWaterScanTick ?? 'n'}`,
       );
     }
 
@@ -343,14 +345,14 @@ function fnv1aHashState(state: CanonicalState): string {
       const spatial = cognitiveMemory.spatial
         .map(
           (entry) =>
-            `${entry.id}:${entry.kind}@${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}:` +
+            `${entry.id}:${entry.kind}@${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}:${entry.decayAnchorTick ?? entry.lastSeenTick}:` +
             `${q(entry.confidence01)}:${q(entry.precisionM)}:` +
             // encodedConfidence01/encodedPrecisionM déterminent la trajectoire future de
             // ForgettingSystem : deux souvenirs identiques aujourd'hui mais avec des
             // baselines différentes divergeront au prochain tick de décroissance.
             `${q(entry.encodedConfidence01)}:${q(entry.encodedPrecisionM)}:` +
             `${entry.source}:${entry.subjectConceptId ?? 'n'}:` +
-            `${entry.worldRef ? `${entry.worldRef.resourceId}:${entry.worldRef.ownerChunkKey}:${entry.worldRef.localId}` : 'n'}`,
+            `${entry.worldRef ? `${entry.worldRef.resourceId}:${entry.worldRef.ownerChunkKey}:${entry.worldRef.localId}` : 'n'}:${entry.foodCandidate ? 1 : 0}`,
         )
         .join(';');
       const episodic = cognitiveMemory.episodic

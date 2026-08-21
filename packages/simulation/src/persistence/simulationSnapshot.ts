@@ -97,7 +97,7 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // une reprojection créerait des souvenirs dupliqués sans confiance ni précision correcte).
 // Perte de fonctionnalité assumée : au chargement, la décision vitale attend un nouveau
 // scan (quelques ticks) avant d'avoir un souvenir de rive/ressource utilisable.
-export const SIMULATION_SNAPSHOT_VERSION = 12;
+export const SIMULATION_SNAPSHOT_VERSION = 13;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -287,6 +287,7 @@ export function migrateSnapshotV10ToV11(snapshot: SimulationSnapshot): Simulatio
     precisionM: number;
     encodedConfidence01?: number;
     encodedPrecisionM?: number;
+    decayAnchorTick?: number;
     source: string;
     subjectConceptId?: string;
     worldRef?: unknown;
@@ -320,6 +321,9 @@ export function migrateSnapshotV10ToV11(snapshot: SimulationSnapshot): Simulatio
         ...entry,
         encodedConfidence01: entry.encodedConfidence01 ?? entry.confidence01,
         encodedPrecisionM: entry.encodedPrecisionM ?? entry.precisionM,
+        // Les valeurs courantes deviennent la nouvelle baseline à l'instant du snapshot :
+        // repartir de lastSeenTick les ferait décroître une seconde fois.
+        decayAnchorTick: entry.decayAnchorTick ?? snapshot.clock.currentTick,
         source: entry.source === 'selfExperience' ? 'directPerception' : entry.source,
       })),
     },
@@ -396,6 +400,55 @@ export function migrateSnapshotV11ToV12(snapshot: SimulationSnapshot): Simulatio
       components: {
         ...snapshot.entities.components,
         Memory: migratedMemory,
+      },
+    },
+  };
+}
+
+/** Migre v12 vers v13 : ancre explicite de décroissance et état de décision ajouté. */
+export function migrateSnapshotV12ToV13(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 12) {
+    throw new Error(`migrateSnapshotV12ToV13: version ${snapshot.version} inattendue (12 requis)`);
+  }
+  const components = snapshot.entities.components;
+  type LegacySpatial = { lastSeenTick: number; decayAnchorTick?: number; [key: string]: unknown };
+  type LegacyCognitiveMemory = { spatial: LegacySpatial[]; [key: string]: unknown };
+  type LegacyComponent = Record<string, unknown>;
+  const cognitiveMemory = (components.CognitiveMemory ?? []) as unknown as [
+    EntityId,
+    LegacyCognitiveMemory,
+  ][];
+  const memory = (components.Memory ?? []) as unknown as [EntityId, LegacyComponent][];
+  const needsState = (components.NeedsState ?? []) as unknown as [EntityId, LegacyComponent][];
+  return {
+    ...snapshot,
+    version: 13,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        CognitiveMemory: cognitiveMemory.map(([id, value]) => [
+          id,
+          {
+            ...value,
+            spatial: value.spatial.map((entry) => ({
+              ...entry,
+              decayAnchorTick: entry.decayAnchorTick ?? entry.lastSeenTick,
+            })),
+          },
+        ]),
+        Memory: memory.map(([id, value]) => [
+          id,
+          { ...value, lastFoodScanTick: null, lastWaterScanTick: null },
+        ]),
+        NeedsState: needsState.map(([id, value]) => [
+          id,
+          {
+            ...value,
+            resourceConceptId: value.resourceConceptId ?? null,
+            currentMealCausedPoisoning: value.currentMealCausedPoisoning ?? false,
+          },
+        ]),
       },
     },
   };
