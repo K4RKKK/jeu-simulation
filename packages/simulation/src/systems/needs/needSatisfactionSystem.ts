@@ -23,6 +23,7 @@ import {
   endResourceInteraction,
   harvestInteractiveResource,
 } from '../../world/resourceInteraction.js';
+import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
 import { nearestKnownFood, nearestKnownWater } from '../../cognition/spatialMemoryQuery.js';
 
 /**
@@ -90,7 +91,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         const rested =
           state.action === 'rest' && needs.energy >= ctx.config.needs.energy.restTarget;
         if (fulfilled || replete || rested || ctx.tick >= state.untilTick) {
-          this.finishAction(ctx, entity, needs, state, activity);
+          this.finishAction(ctx, entity, needs, state, activity, transform, memory);
         }
       },
     );
@@ -359,11 +360,73 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     needs: NeedsComponent,
     state: NeedsStateComponent,
     activity: ActivityComponent,
+    transform: TransformComponent,
+    memory: CognitiveMemoryComponent,
   ): void {
     const done = state.action;
     if (done === 'eat' && state.resourceId !== null) {
       endResourceInteraction(ctx.entities, entity, state.resourceId);
     }
+
+    // Phase 3.3 : chaque action vitale terminée laisse un épisode. `emotionalStrength01`
+    // classe la mémorabilité — un repas empoisonné surpasse largement une gorgée d'eau
+    // ordinaire, et résistera plus longtemps à l'éviction (voir `episodicMemoryModel`).
+    // Position enregistrée pour que de futures croyances puissent associer un lieu à un
+    // outcome ; `subjectConcept` non renseigné faute de projection concept ↔ ressource
+    // stable pour l'eau/le repos (viendra en Phase 3.7+).
+    const cognitionConfig = ctx.config.cognition;
+    if (done === 'drink') {
+      rememberEpisodic(
+        memory,
+        {
+          tick: ctx.tick,
+          eventType: 'water.drunk',
+          actors: [entity],
+          x: transform.x,
+          z: transform.z,
+          outcome: 'thirst.quenched',
+          emotionalStrength01: 0.15,
+        },
+        cognitionConfig,
+      );
+    } else if (done === 'eat') {
+      // « Ce repas m'a-t-il rendu malade ? » = le poison est-il actif à la fin de ce repas.
+      // `poisoningToxicity01` seul ne suffit pas : il n'est jamais remis à zéro et reste à
+      // la valeur d'un empoisonnement passé, ce qui étiquetterait à tort tout repas sain
+      // ultérieur comme un empoisonnement.
+      const poisoned = state.poisoningUntilTick >= ctx.tick;
+      rememberEpisodic(
+        memory,
+        {
+          tick: ctx.tick,
+          eventType: 'food.eaten',
+          actors: [entity],
+          x: transform.x,
+          z: transform.z,
+          outcome: poisoned ? 'physiology.poisoning_started' : 'physiology.satiety_increased',
+          // Un empoisonnement ordinaire (toxicité 0.3) est déjà bien plus marquant qu'un
+          // repas sain (0.2) ; un empoisonnement sévère (0.9) devient un vrai traumatisme
+          // qui va survivre à des dizaines de repas suivants.
+          emotionalStrength01: poisoned ? clamp(0.5 + state.poisoningToxicity01 * 0.5, 0, 1) : 0.2,
+        },
+        cognitionConfig,
+      );
+    } else if (done === 'rest') {
+      rememberEpisodic(
+        memory,
+        {
+          tick: ctx.tick,
+          eventType: 'rest.completed',
+          actors: [entity],
+          x: transform.x,
+          z: transform.z,
+          outcome: 'physiology.energy_recovered',
+          emotionalStrength01: 0.15,
+        },
+        cognitionConfig,
+      );
+    }
+
     state.action = 'none';
     state.targetX = null;
     state.targetZ = null;

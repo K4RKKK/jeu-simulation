@@ -288,6 +288,13 @@ export interface CognitionConfig {
   minSpatialConfidence01: number;
   /** Nombre maximal de souvenirs spatiaux par humain (le moins fiable est oublié en premier). */
   maxSpatialEntries: number;
+  /**
+   * Nombre maximal d'événements épisodiques (Phase 3.3) : quand cette limite est atteinte,
+   * l'entrée d'intensité émotionnelle la plus basse est évincée en priorité — pas la plus
+   * ancienne. Un traumatisme rare (empoisonnement sévère) survit ainsi à des dizaines
+   * d'événements ordinaires (un repas de plus, une gorgée de plus).
+   */
+  maxEpisodicEntries: number;
 }
 
 export interface SchedulerConfig {
@@ -514,6 +521,11 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     // scan disparaissait avant le 25ᵉ arbre observé dans le MÊME tick. Ce plafond doit
     // dépasser largement ce qu'une seule passe peut produire, tout en restant borné.
     maxSpatialEntries: 80,
+    // Ordre de grandeur similaire à la mémoire spatiale : un humain n'est pas un journal.
+    // Un repas + une gorgée + un repos = 3 événements toutes les ~5-10 min de jeu, soit
+    // ~5h de souvenirs récents avant éviction. Les traumatismes (empoisonnements) résistent
+    // plus longtemps grâce à leur `emotionalStrength01` élevé, par construction de l'évincement.
+    maxEpisodicEntries: 64,
   },
   pathfinding: {
     // 2 m de tuile : un humain fait ~1,6 pas par tuile, la résolution suit la géographie

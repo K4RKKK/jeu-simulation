@@ -248,6 +248,13 @@ describe('NeedSatisfactionSystem', () => {
     expect(stopped).toBe(true);
     expect(needs.hydration).toBeGreaterThan(0.6);
     expect(state.action).toBe('none');
+
+    // Phase 3.3 : la fin du repas d'eau doit avoir laissé un épisode dans la mémoire cognitive.
+    const memory = simulation.entities.getComponentOrThrow(entity, CognitiveMemory);
+    const drinkEpisode = memory.episodic.find((e) => e.eventType === 'water.drunk');
+    expect(drinkEpisode).toBeDefined();
+    expect(drinkEpisode?.outcome).toBe('thirst.quenched');
+    expect(drinkEpisode?.actors).toEqual([entity]);
     simulation.dispose();
   });
 
@@ -357,6 +364,31 @@ describe('NeedSatisfactionSystem', () => {
     // de manger, pas avant : la toxicité n'est jamais une connaissance préalable.
     expect(state.poisoningToxicity01).toBe(toxic.foodToxicity01);
     expect(state.poisoningUntilTick).toBeGreaterThanOrEqual(simulation.clock.currentTick);
+    simulation.dispose();
+  });
+
+  /**
+   * Phase 3.3 : un repas terminé laisse un épisode `food.eaten` avec l'outcome adéquat
+   * (`poisoning_started` si toxique, `satiety_increased` sinon). L'intensité émotionnelle
+   * d'un empoisonnement est nettement supérieure à celle d'un repas ordinaire — c'est ce
+   * qui lui permet de résister à l'éviction quand la mémoire épisodique se remplit.
+   */
+  it('écrit un épisode `food.eaten` avec un outcome d’empoisonnement pour une ressource toxique', () => {
+    const simulation = needsSystems();
+    simulation.start();
+    seedFoodUnderHuman(simulation, (candidate) => candidate.foodToxicity01 > 0);
+    const entity = simulation.humanIds()[0]!;
+    setNeeds(simulation, { hydration: 1, hunger: 0.05 });
+
+    // Assez long pour terminer le repas (maxEatSeconds ~180 s).
+    simulation.step(400);
+
+    const memory = simulation.entities.getComponentOrThrow(entity, CognitiveMemory);
+    const foodEpisode = memory.episodic.find((e) => e.eventType === 'food.eaten');
+    expect(foodEpisode).toBeDefined();
+    expect(foodEpisode?.outcome).toBe('physiology.poisoning_started');
+    // Un empoisonnement est significativement plus marquant qu'un repas ordinaire (0.2).
+    expect(foodEpisode!.emotionalStrength01).toBeGreaterThan(0.5);
     simulation.dispose();
   });
 
