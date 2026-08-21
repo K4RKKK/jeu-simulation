@@ -1,5 +1,6 @@
 import type { EntityId } from '@civ/shared';
 import type { ConceptId } from '../cognition/ids.js';
+import type { ActiveGoal } from '../cognition/goalModel.js';
 import { defineComponent } from '../core/componentType.js';
 
 /**
@@ -41,12 +42,12 @@ export interface DecisionReason {
  * Toujours créé vide à la naissance ; personne n'écrit dedans avant la sous-phase 3.4.
  */
 export interface HumanCognitionComponent {
-  activeGoalId: string | null;
+  activeGoal: ActiveGoal | null;
   decisionReason: DecisionReason | null;
 }
 
 export const HumanCognition = defineComponent<HumanCognitionComponent>('HumanCognition');
 
 export function createEmptyHumanCognition(): HumanCognitionComponent {
-  return { activeGoalId: null, decisionReason: null };
+  return { activeGoal: null, decisionReason: null };
 }

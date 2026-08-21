@@ -81,7 +81,7 @@ describe('persistance des composants cognitifs', () => {
     });
 
     const cognition = simulation.entities.getComponentOrThrow(human, HumanCognition);
-    cognition.activeGoalId = 'goal:reduceHunger';
+    cognition.activeGoal = { kind: 'survive.nourish', startedAtTick: 41 };
     cognition.decisionReason = {
       code: 'need.hunger',
       factors: [

@@ -7,6 +7,7 @@ import {
   migrateSnapshotV11ToV12,
   migrateSnapshotV12ToV13,
   migrateSnapshotV13ToV14,
+  migrateSnapshotV14ToV15,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -67,7 +68,7 @@ describe('migrateSnapshotV9ToV10', () => {
         social: [],
       });
       expect(knowledges.get(id)).toEqual({ nextBeliefId: 0, beliefs: [] });
-      expect(cognitions.get(id)).toEqual({ activeGoalId: null, decisionReason: null });
+      expect(cognitions.get(id)).toEqual({ activeGoal: null, decisionReason: null });
     }
   });
 
@@ -114,7 +115,7 @@ describe('migrateSnapshotV9ToV10', () => {
         beliefs: [],
       });
       expect(target.entities.getComponentOrThrow(id, HumanCognition)).toEqual({
-        activeGoalId: null,
+        activeGoal: null,
         decisionReason: null,
       });
     }
@@ -571,5 +572,35 @@ describe('migrateSnapshotV13ToV14', () => {
         }
       ).beliefs[0]?.property,
     ).toBe('food.edible');
+  });
+});
+
+describe('migrateSnapshotV14ToV15', () => {
+  it('replaces the opaque legacy goal with no fabricated intention', () => {
+    const simulation = makeSimulation('migration-v14-v15');
+    const snapshot = simulation.captureSnapshot();
+    simulation.dispose();
+    const v14: SimulationSnapshot = {
+      ...snapshot,
+      version: 14,
+      entities: {
+        ...snapshot.entities,
+        components: {
+          ...snapshot.entities.components,
+          HumanCognition: snapshot.entities.ids.map((id) => [
+            id,
+            { activeGoalId: 'goal:reduceHunger', decisionReason: null },
+          ]),
+        },
+      },
+    };
+
+    const migrated = migrateSnapshotV14ToV15(v14);
+    expect(migrated.version).toBe(15);
+    expect((migrated.entities.components.HumanCognition ?? [])[0]?.[1]).toEqual({
+      activeGoal: null,
+      decisionReason: null,
+    });
+    expect(v14.version).toBe(14);
   });
 });

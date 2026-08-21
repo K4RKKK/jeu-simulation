@@ -156,8 +156,12 @@ export interface NeedsConfig {
     drinkWeight: number;
     eatWeight: number;
     exploreBaseWeight: number;
-    noMemoryPenalty: number;
-    recentPoisoningWindowSeconds: number;
+    /** Ecart relatif requis avant de remplacer un but vital deja choisi. */
+    goalSwitchMargin01: number;
+    /** Duree minimale pendant laquelle un but vital garde la main. */
+    minimumGoalCommitmentSeconds: number;
+    /** Ecart d'utilite qui peut interrompre ce commitment lors d'une urgence. */
+    urgentGoalOverrideMultiplier: number;
   };
   hydration: {
     /** Perte d'hydratation au repos dans un climat tempéré : ~3 jours de survie. */
@@ -463,8 +467,9 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
       drinkWeight: 1.4,
       eatWeight: 0.8,
       exploreBaseWeight: 0.5,
-      noMemoryPenalty: 0.15,
-      recentPoisoningWindowSeconds: 1800,
+      goalSwitchMargin01: 0.2,
+      minimumGoalCommitmentSeconds: 20,
+      urgentGoalOverrideMultiplier: 3,
     },
     hydration: {
       drainPerSecond: 1 / 259200,

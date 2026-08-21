@@ -406,7 +406,7 @@ function fnv1aHashState(state: CanonicalState): string {
         )
         .join(',');
       write(
-        `hc:${entity}:${cognition.activeGoalId ?? 'n'}|${cognition.decisionReason?.code ?? 'n'}|${factors}`,
+        `hc:${entity}:${cognition.activeGoal?.kind ?? 'n'}:${cognition.activeGoal?.startedAtTick ?? 'n'}|${cognition.decisionReason?.code ?? 'n'}|${factors}`,
       );
     }
   }

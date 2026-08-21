@@ -214,13 +214,16 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
     const before = hashWorldState(simulation);
 
     const cognition = simulation.entities.getComponentOrThrow(human, HumanCognition);
-    cognition.activeGoalId = 'goal:reduceThirst';
+    cognition.activeGoal = { kind: 'survive.hydrate', startedAtTick: 17 };
     cognition.decisionReason = {
       code: 'need.thirst',
       factors: [{ code: 'need.thirst.urgency', value: 0.9 }],
     };
 
     expect(hashWorldState(simulation)).not.toBe(before);
+    const afterKind = hashWorldState(simulation);
+    cognition.activeGoal = { kind: 'survive.hydrate', startedAtTick: 18 };
+    expect(hashWorldState(simulation)).not.toBe(afterKind);
     simulation.dispose();
   });
 

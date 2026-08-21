@@ -36,13 +36,7 @@ import {
   FOOD_NOURISHING_PROPERTY,
 } from '../../cognition/foodBeliefModel.js';
 import { nearestKnownFood, nearestKnownWater } from '../../cognition/spatialMemoryQuery.js';
-import {
-  pickBestOption,
-  scoreDrink,
-  scoreEat,
-  scoreExplore,
-  scoreRest,
-} from '../../cognition/utilityScorer.js';
+import { goalForNeedsAction } from '../../cognition/goalModel.js';
 
 /**
  * Décide des actions vitales quand un besoin devient critique (CLAUDE.md règle 7 : il
@@ -57,7 +51,7 @@ import {
  * mais dans la mémoire cognitive individuelle remplie par la perception. Sans souvenir,
  * pas de plan : l'errance explore, la perception mémorise, et la décision suivra.
  *
- * Phase 3.5 : lit `CognitiveMemory.spatial` (souvenirs vieillissables, avec confiance et
+ * Phase 3.4 : lit `CognitiveMemory.spatial` (souvenirs vieillissables, avec confiance et
  * précision) au lieu de l'ancien `Memory.food`/`Memory.water` (index étroit sans notion
  * de fiabilité). Le choix d'une cible n'est plus « le plus proche à vol d'oiseau » mais
  * un compromis distance/précision/confiance — voir `spatialMemoryQuery.ts` pour la
@@ -103,7 +97,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           });
 
         if (state.action === 'none') {
-          this.decide(
+          this.executeGoal(
             ctx,
             entity,
             needs,
@@ -120,6 +114,13 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         }
 
         if (state.action === 'seekWater' || state.action === 'seekFood') {
+          if (
+            cognition.activeGoal !== null &&
+            cognition.activeGoal.kind !== goalForNeedsAction(state.action)
+          ) {
+            this.cancelSeek(state, movement);
+            return;
+          }
           // En route : le MovementSystem s'occupe du reste.
           if (movement.targetX !== null || movement.targetZ !== null) return;
           this.onArrival(ctx, entity, needs, state, activity, transform);
@@ -140,7 +141,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     );
   }
 
-  private decide(
+  private executeGoal(
     ctx: SystemUpdateContext,
     entity: EntityId,
     needs: NeedsComponent,
@@ -153,58 +154,9 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     cognition: HumanCognitionComponent,
     personality: PersonalityComponent,
   ): void {
-    const { needs: config } = ctx.config;
-    const knownWater = nearestKnownWater(memory.spatial, transform.x, transform.z);
-    const knownFood = nearestKnownFood(
-      memory.spatial,
-      transform.x,
-      transform.z,
-      (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
-      (resourceId) => ctx.world.delta.isDepleted(resourceId),
-      (entry) => foodPreference01(knowledge, entry.subjectConceptId, personality.caution),
-    );
-    const poisoningWindowTicks = Math.ceil(
-      config.decision.recentPoisoningWindowSeconds / ctx.config.time.gameSecondsPerTick,
-    );
-    const recentPoisonings = memory.episodic.filter(
-      (entry) =>
-        entry.eventType === 'food.ingestion' &&
-        entry.outcome === 'physiology.poisoning_started' &&
-        entry.tick >= ctx.tick - poisoningWindowTicks &&
-        (knownFood === null || entry.subjectConcept === knownFood.entry.subjectConceptId),
-    ).length;
-
-    const { winner, reason } = pickBestOption([
-      scoreDrink(needs, knownWater !== null, config.hydration.criticalThreshold, config.decision),
-      scoreEat(
-        needs,
-        knownFood !== null,
-        recentPoisonings,
-        knownFood === null
-          ? null
-          : effectiveFoodProbability01(
-              knowledge,
-              knownFood.entry.subjectConceptId,
-              FOOD_NOURISHING_PROPERTY,
-            ),
-        knownFood === null
-          ? null
-          : effectiveFoodProbability01(
-              knowledge,
-              knownFood.entry.subjectConceptId,
-              FOOD_ILLNESS_RISK_PROPERTY,
-            ),
-        personality.caution,
-        config.hunger.criticalThreshold,
-        config.decision,
-      ),
-      scoreRest(needs, config.energy.exhaustedThreshold, config.decision),
-      scoreExplore(personality, config.decision),
-    ]);
-    cognition.decisionReason = reason;
-
-    if (winner.kind === 'explore') return;
-    if (winner.kind === 'rest') {
+    const goal = cognition.activeGoal?.kind;
+    if (goal === undefined || goal === 'explore') return;
+    if (goal === 'survive.rest') {
       this.startRest(ctx, needs, state, activity);
       return;
     }
@@ -213,24 +165,33 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     // retenue posé par le PathfindingSystem : l'errance explore, la perception mémorisera
     // d'autres cibles.
     if (ctx.tick < state.pathFailedAtTick) return;
-    if (winner.kind === 'drink') {
-      if (knownWater === null) return;
+    if (goal === 'survive.hydrate') {
       this.seekWater(ctx, entity, state, activity, movement, transform, memory);
       return;
     }
-    if (knownFood !== null) {
-      this.seekFood(
-        ctx,
-        entity,
-        state,
-        activity,
-        movement,
-        transform,
-        memory,
-        knowledge,
-        personality,
-      );
-    }
+    this.seekFood(
+      ctx,
+      entity,
+      state,
+      activity,
+      movement,
+      transform,
+      memory,
+      knowledge,
+      personality,
+    );
+  }
+
+  private cancelSeek(state: NeedsStateComponent, movement: MovementComponent): void {
+    state.action = 'none';
+    state.targetX = null;
+    state.targetZ = null;
+    state.resourceId = null;
+    state.resourceOwnerChunkKey = null;
+    state.resourceLocalId = null;
+    state.resourceConceptId = null;
+    movement.targetX = null;
+    movement.targetZ = null;
   }
 
   private seekWater(
