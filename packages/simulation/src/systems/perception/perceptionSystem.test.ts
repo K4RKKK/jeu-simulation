@@ -165,6 +165,23 @@ describe('PerceptionSystem', () => {
     simulation.dispose();
   });
 
+  it('ne consolide pas un décor visible mais non mémorisable', () => {
+    const simulation = perceptionSimulation('perception-decor-not-remembered', 1, {
+      cognition: { maxSpatialEntries: 500 },
+    });
+    simulation.start();
+    const decor = standOnResource(simulation, (candidate) => !candidate.rememberable);
+
+    simulation.step(6);
+
+    expect(
+      cognitiveMemoryOf(simulation).spatial.some(
+        (entry) => entry.worldRef?.resourceId === decor.id,
+      ),
+    ).toBe(false);
+    simulation.dispose();
+  });
+
   /** kcal/toxicité sont une vérité moteur cachée : elles ne doivent jamais fuiter dans la cognition. */
   it('ne copie jamais kcal/toxicité dans la mémoire cognitive', () => {
     const simulation = perceptionSimulation('perception-cognitive-no-leak');

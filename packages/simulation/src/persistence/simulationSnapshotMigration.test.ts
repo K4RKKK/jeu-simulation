@@ -134,7 +134,7 @@ describe('migrateSnapshotV9ToV10', () => {
  * Permet de tester `migrateSnapshotV10ToV11` sans avoir de vraies sauvegardes v10 sur
  * disque.
  */
-function asV10Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
+function asV10Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): SimulationSnapshot {
   type LegacySpatial = Record<string, unknown>;
   type LegacyMem = {
     nextMemoryId: number;
@@ -162,6 +162,12 @@ function asV10Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
   return {
     ...snapshot,
     version: 10,
+    // Le commit 2bff5af produisait déjà des snapshots v10 mais son empreinte ne
+    // couvrait pas encore `cognition`. Rejouer cette vraie forme historique est
+    // essentiel : une empreinte actuelle masquerait une régression de compatibilité.
+    configFingerprint: (
+      simulation as unknown as { preCognitionConfigFingerprint(): string }
+    ).preCognitionConfigFingerprint(),
     entities: {
       ...snapshot.entities,
       components: {
@@ -178,7 +184,7 @@ describe('migrateSnapshotV10ToV11', () => {
     const simulation = makeSimulation('migration-v10-v11');
     simulation.start();
     simulation.step(200);
-    const v10 = asV10Snapshot(simulation.captureSnapshot());
+    const v10 = asV10Snapshot(simulation, simulation.captureSnapshot());
     simulation.dispose();
 
     expect(v10.version).toBe(10);
@@ -197,11 +203,10 @@ describe('migrateSnapshotV10ToV11', () => {
     ][];
     const allSpatial = entries.flatMap(([, mem]) => mem.spatial);
 
-    if (allSpatial.length > 0) {
-      for (const entry of allSpatial) {
-        expect(entry.encodedConfidence01).toBeDefined();
-        expect(entry.encodedPrecisionM).toBeDefined();
-      }
+    expect(allSpatial.length).toBeGreaterThan(0);
+    for (const entry of allSpatial) {
+      expect(entry.encodedConfidence01).toBe(entry.confidence01);
+      expect(entry.encodedPrecisionM).toBe(entry.precisionM);
     }
   });
 
@@ -209,7 +214,7 @@ describe('migrateSnapshotV10ToV11', () => {
     const simulation = makeSimulation('migration-source-conv');
     simulation.start();
     simulation.step(200);
-    const v10 = asV10Snapshot(simulation.captureSnapshot());
+    const v10 = asV10Snapshot(simulation, simulation.captureSnapshot());
     simulation.dispose();
 
     const migrated = migrateSnapshotV10ToV11(v10);
@@ -235,7 +240,7 @@ describe('migrateSnapshotV10ToV11', () => {
 
   it('ne touche pas le snapshot original (pure)', () => {
     const simulation = makeSimulation('migration-v10-purity');
-    const v10 = asV10Snapshot(simulation.captureSnapshot());
+    const v10 = asV10Snapshot(simulation, simulation.captureSnapshot());
     simulation.dispose();
 
     migrateSnapshotV10ToV11(v10);
@@ -247,10 +252,61 @@ describe('migrateSnapshotV10ToV11', () => {
     const source = makeSimulation('migration-v10-e2e');
     source.start();
     source.step(50);
-    const v10 = asV10Snapshot(source.captureSnapshot());
+    const v10 = asV10Snapshot(source, source.captureSnapshot());
     source.dispose();
 
     const target = makeSimulation('migration-v10-e2e');
+    expect(() => target.restoreSnapshot(v10)).not.toThrow();
+    target.dispose();
+  });
+
+  it('convertit une ancienne croyance string en catégorie fermée', () => {
+    const simulation = makeSimulation('migration-belief-string');
+    const v10 = asV10Snapshot(simulation, simulation.captureSnapshot());
+    simulation.dispose();
+
+    const [humanId] = v10.entities.ids;
+    if (humanId === undefined) throw new Error('aucun humain dans le snapshot de test');
+    const knowledge = v10.entities.components.CognitiveKnowledge as [
+      number,
+      { beliefs: unknown[] },
+    ][];
+    knowledge
+      .find(([id]) => id === humanId)?.[1]
+      .beliefs.push({
+        id: 1,
+        subjectConcept: 'berry:red',
+        property: 'edible',
+        value: 'unknown',
+        confidence01: 0.5,
+        evidenceCount: 1,
+        lastUpdatedTick: 0,
+      });
+
+    const migrated = migrateSnapshotV10ToV11(v10);
+    const migratedKnowledge = migrated.entities.components.CognitiveKnowledge as [
+      number,
+      { beliefs: Array<{ value: unknown }> },
+    ][];
+    expect(migratedKnowledge.find(([id]) => id === humanId)?.[1].beliefs[0]?.value).toEqual({
+      kind: 'category',
+      code: 'unknown',
+    });
+  });
+
+  it('accepte le fingerprint pré-cognition d’une vraie sauvegarde v10', () => {
+    const source = makeSimulation('migration-v10-historical-fingerprint');
+    const v10 = asV10Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = new Simulation({
+      seed: 'migration-v10-historical-fingerprint',
+      population: 3,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        cognition: { spatialConfidenceHalfLifeSeconds: 999999 },
+      },
+    });
     expect(() => target.restoreSnapshot(v10)).not.toThrow();
     target.dispose();
   });
