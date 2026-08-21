@@ -414,7 +414,6 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     const seconds = clamp(missing / ratePerSecond, minSeconds, maxSeconds);
     return ctx.tick + Math.max(1, Math.ceil(seconds / ctx.config.time.gameSecondsPerTick));
   }
-
 }
 
 /**

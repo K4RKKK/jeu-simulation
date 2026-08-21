@@ -12,6 +12,10 @@ import { PerceptionSystem } from './perceptionSystem.js';
 /**
  * La perception est le seul chemin du savoir spatial : ce que l'humain n'a pas vu de ses
  * yeux ne figure jamais dans sa mémoire. Le système est déterministe — aucun tirage.
+ *
+ * Depuis Phase 3.5, les souvenirs vivent uniquement dans `CognitiveMemory.spatial` (avec
+ * confiance et précision) — `MemoryComponent` ne conserve que les positions du dernier
+ * scan, pour piloter le seuil de rescan.
  */
 function perceptionSimulation(
   seed: string,
@@ -82,34 +86,12 @@ describe('PerceptionSystem', () => {
     simulation.dispose();
   });
 
-  it('se souvient des ressources comestibles du chunk dès le premier scan', () => {
-    const simulation = perceptionSimulation('perception-food');
-    simulation.start();
-    standOnResource(simulation, (candidate) => candidate.foodKcal > 0);
-
-    simulation.step(6); // la cohorte de l'humain a eu le temps d'être scannée
-
-    const food = memoryOf(simulation).food;
-    expect(food.length).toBeGreaterThan(0);
-    for (const entry of food) {
-      expect(entry.foodKcal).toBeGreaterThan(0);
-      // La toxicité n'est jamais un souvenir : elle se découvre en mangeant.
-      expect(entry).not.toHaveProperty('foodToxicity01');
-    }
-    simulation.dispose();
-  });
-
-  /**
-   * Phase 3.2 : le même scan écrit AUSSI dans la mémoire cognitive générique, en
-   * parallèle de l'ancien `Memory` ci-dessus — coexistence délibérée (P3.21), pas un
-   * remplacement.
-   */
-  it('écrit aussi un souvenir spatial générique pour une ressource comestible vue', () => {
+  it('écrit un souvenir spatial pour une ressource comestible vue', () => {
     const simulation = perceptionSimulation('perception-cognitive-food');
     simulation.start();
     const spawn = standOnResource(simulation, (candidate) => candidate.foodKcal > 0);
 
-    simulation.step(6);
+    simulation.step(6); // la cohorte de l'humain a eu le temps d'être scannée
 
     const spatial = cognitiveMemoryOf(simulation).spatial;
     const entry = spatial.find((candidate) => candidate.worldRef?.resourceId === spawn.id);
@@ -120,9 +102,7 @@ describe('PerceptionSystem', () => {
     simulation.dispose();
   });
 
-  it('écrit aussi un souvenir spatial générique pour une rive vue', () => {
-    // Même seed que « se souvient de la rive » : garantit un rivage visible dans le rayon
-    // système (visionRangeM), ce qui rend le test robuste quelle que soit la config.
+  it('écrit un souvenir spatial pour une rive vue', () => {
     // maxSpatialEntries élevé : la rive est ajoutée avant les ressources ; sans cette
     // limite haute, la 81ème ressource l'évincerait (même confiance → FIFO).
     const simulation = perceptionSimulation('perception-water', 1, {
@@ -147,31 +127,22 @@ describe('PerceptionSystem', () => {
     simulation.step(6);
 
     const spatial = cognitiveMemoryOf(simulation).spatial;
-    expect(spatial.some((entry) => entry.kind === 'water')).toBe(true);
-    simulation.dispose();
-  });
-
-  it('ne retient pas ce qui n’a pas l’apparence de nourriture', () => {
-    const simulation = perceptionSimulation('perception-stone');
-    simulation.start();
-    const stone = standOnResource(simulation, (candidate) => candidate.foodKcal === 0);
-
-    simulation.step(6);
-
-    const ids = memoryOf(simulation).food.map((entry) => entry.resourceId);
-    expect(ids).not.toContain(stone.id);
+    const water = spatial.find((entry) => entry.kind === 'water');
+    expect(water).toBeDefined();
+    expect(world.hydrology.distanceToWaterMeters(water!.x, water!.z)).toBeLessThanOrEqual(
+      simulation.config.needs.search.drinkShoreDistanceM,
+    );
     simulation.dispose();
   });
 
   /**
-   * Bug corrigé (Phase 3.2, correction immédiate après relecture) : la mémoire
-   * cognitive ne recevait initialement que les ressources comestibles
-   * (`foodKcal > 0`) — de l'omniscience déguisée (une pierre visible n'existait
-   * simplement pas pour la cognition). Une ressource non alimentaire visible doit
-   * entrer dans `CognitiveMemory`, même si elle n'entre jamais dans l'ancien
-   * `Memory.food`.
+   * Bug corrigé après Phase 3.2 : la mémoire cognitive ne recevait initialement que les
+   * ressources comestibles (`foodKcal > 0`) — de l'omniscience déguisée (une pierre
+   * visible n'existait simplement pas pour la cognition). Une ressource non alimentaire
+   * `rememberable` (interactive) doit entrer dans `CognitiveMemory` au même titre qu'une
+   * baie.
    */
-  it('une ressource non alimentaire visible entre dans CognitiveMemory mais jamais Memory.food', () => {
+  it('une ressource non alimentaire visible entre dans CognitiveMemory', () => {
     // maxSpatialEntries élevé : évite l'éviction quand le chunk contient plus d'entrées
     // que la limite par défaut (80), ce qui ferait sortir la pierre cible du tableau.
     const simulation = perceptionSimulation('perception-cognitive-stone', 1, {
@@ -185,8 +156,6 @@ describe('PerceptionSystem', () => {
     );
 
     simulation.step(6);
-
-    expect(memoryOf(simulation).food.map((entry) => entry.resourceId)).not.toContain(stone.id);
 
     const entry = cognitiveMemoryOf(simulation).spatial.find(
       (candidate) => candidate.worldRef?.resourceId === stone.id,
@@ -211,37 +180,10 @@ describe('PerceptionSystem', () => {
     simulation.dispose();
   });
 
-  it('se souvient de la rive quand elle est dans le champ de vision', () => {
-    const simulation = perceptionSimulation('perception-water');
-    simulation.start();
-
-    const world = simulation.world;
-    const transform = transformOf(simulation);
-    const shore = scanForShorePoint(
-      transform.x,
-      transform.z,
-      200,
-      8,
-      simulation.config.needs.search.drinkShoreDistanceM,
-      (x, z) => world.isWalkable(x, z),
-      (x, z) => world.hydrology.distanceToWaterMeters(x, z),
-    );
-    expect(shore).not.toBeNull();
-    transform.x = shore!.x;
-    transform.z = shore!.z;
-
-    simulation.step(6);
-
-    const water = memoryOf(simulation).water;
-    expect(water.length).toBeGreaterThan(0);
-    expect(world.hydrology.distanceToWaterMeters(water[0]!.x, water[0]!.z)).toBeLessThanOrEqual(
-      simulation.config.needs.search.drinkShoreDistanceM,
-    );
-    simulation.dispose();
-  });
-
-  it('ne rescanner l’eau qu’après un déplacement suffisant', () => {
-    const simulation = perceptionSimulation('perception-gate');
+  it('ne rescanne l’eau qu’après un déplacement suffisant', () => {
+    const simulation = perceptionSimulation('perception-gate', 1, {
+      cognition: { maxSpatialEntries: 500 },
+    });
     simulation.start();
 
     const world = simulation.world;
@@ -261,16 +203,18 @@ describe('PerceptionSystem', () => {
 
     simulation.step(6);
     const memory = memoryOf(simulation);
-    expect(memory.water.length).toBeGreaterThan(0);
+    const waterEntry = cognitiveMemoryOf(simulation).spatial.find((e) => e.kind === 'water');
+    expect(waterEntry).toBeDefined();
     const scanX = memory.lastWaterScanX;
     const scanZ = memory.lastWaterScanZ;
-    const lastSeen = memory.water[0]!.lastSeenTick;
+    const lastSeen = waterEntry!.lastSeenTick;
 
     // Immobile, on ne revoit rien de nouveau : ni re-scan, ni souvenir rafraîchi.
     simulation.step(30);
     expect(memoryOf(simulation).lastWaterScanX).toBe(scanX);
     expect(memoryOf(simulation).lastWaterScanZ).toBe(scanZ);
-    expect(memoryOf(simulation).water[0]!.lastSeenTick).toBe(lastSeen);
+    const stillThere = cognitiveMemoryOf(simulation).spatial.find((e) => e.kind === 'water');
+    expect(stillThere?.lastSeenTick).toBe(lastSeen);
     simulation.dispose();
   });
 
@@ -324,25 +268,7 @@ describe('PerceptionSystem', () => {
     simulation.dispose();
   });
 
-  it('n’est pas perturbé par une ressource déjà cueillie dans le chunk', () => {
-    const simulation = perceptionSimulation('perception-removed');
-    simulation.start();
-    const spawn = standOnResource(simulation, (candidate) => candidate.foodKcal > 0);
-    simulation.world.delta.markDepleted(
-      spawn.id,
-      spawn.ownerChunkKey,
-      spawn.localId,
-      simulation.clock.currentTick,
-    );
-
-    simulation.step(6);
-
-    const ids = memoryOf(simulation).food.map((entry) => entry.resourceId);
-    expect(ids).not.toContain(spawn.id);
-    simulation.dispose();
-  });
-
-  it('est déterministe : même seed, mêmes souvenirs', () => {
+  it('est déterministe : même seed, mêmes souvenirs cognitifs', () => {
     const a = perceptionSimulation('perception-det');
     const b = perceptionSimulation('perception-det');
     a.start();
@@ -351,13 +277,13 @@ describe('PerceptionSystem', () => {
     a.step(6);
     b.step(6);
 
-    const foodA = memoryOf(a)
-      .food.map((entry) => entry.resourceId)
+    const spatialA = cognitiveMemoryOf(a)
+      .spatial.map((entry) => `${entry.kind}:${entry.x}:${entry.z}`)
       .sort();
-    const foodB = memoryOf(b)
-      .food.map((entry) => entry.resourceId)
+    const spatialB = cognitiveMemoryOf(b)
+      .spatial.map((entry) => `${entry.kind}:${entry.x}:${entry.z}`)
       .sort();
-    expect(foodA).toEqual(foodB);
+    expect(spatialA).toEqual(spatialB);
     a.dispose();
     b.dispose();
   });

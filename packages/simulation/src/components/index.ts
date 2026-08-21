@@ -29,7 +29,7 @@ export type {
 } from './cognitiveMemory.js';
 export type { DecisionFactor, DecisionReason, HumanCognitionComponent } from './humanCognition.js';
 export type { InteractiveResourceComponent } from './interactiveResource.js';
-export type { FoodMemoryEntry, MemoryComponent, WaterMemoryEntry } from './memory.js';
+export type { MemoryComponent } from './memory.js';
 export type { NeedsComponent, NeedsStateComponent } from './needs.js';
 
 /**

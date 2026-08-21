@@ -4,6 +4,7 @@ import { Simulation } from '../simulation.js';
 import {
   migrateSnapshotV9ToV10,
   migrateSnapshotV10ToV11,
+  migrateSnapshotV11ToV12,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -251,6 +252,109 @@ describe('migrateSnapshotV10ToV11', () => {
 
     const target = makeSimulation('migration-v10-e2e');
     expect(() => target.restoreSnapshot(v10)).not.toThrow();
+    target.dispose();
+  });
+});
+
+/**
+ * Simule une sauvegarde v11 : version ramenée à 11, entrées `Memory` réenrichies avec les
+ * anciens tableaux `food`/`water` que la Phase 3.5 a retirés.
+ */
+function asV11Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
+  type MemoryLegacy = {
+    lastFoodScanX: number | null;
+    lastFoodScanZ: number | null;
+    lastWaterScanX: number | null;
+    lastWaterScanZ: number | null;
+  };
+  const memEntries = (snapshot.entities.components.Memory ?? []) as unknown as [
+    number,
+    MemoryLegacy,
+  ][];
+  const downgraded = memEntries.map(([id, mem]): [number, unknown] => [
+    id,
+    {
+      ...mem,
+      food: [
+        {
+          resourceId: 'legacy',
+          definitionId: 'berry_bush',
+          ownerChunkKey: '0:0',
+          localId: 0,
+          x: 10,
+          z: 10,
+          foodKcal: 300,
+          lastSeenTick: 5,
+        },
+      ],
+      water: [{ x: 20, z: 20, lastSeenTick: 5 }],
+    },
+  ]);
+  return {
+    ...snapshot,
+    version: 11,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        Memory: downgraded as unknown as SimulationSnapshot['entities']['components']['Memory'],
+      },
+    },
+  };
+}
+
+describe('migrateSnapshotV11ToV12', () => {
+  it('retire food et water de chaque entrée Memory, conserve les positions de scan', () => {
+    const simulation = makeSimulation('migration-v11-v12');
+    const v11 = asV11Snapshot(simulation.captureSnapshot());
+    simulation.dispose();
+
+    const migrated = migrateSnapshotV11ToV12(v11);
+    expect(migrated.version).toBe(12);
+
+    type MemoryEntry = {
+      food?: unknown;
+      water?: unknown;
+      lastFoodScanX: number | null;
+      lastWaterScanX: number | null;
+    };
+    const entries = (migrated.entities.components.Memory ?? []) as unknown as [
+      number,
+      MemoryEntry,
+    ][];
+    for (const [, mem] of entries) {
+      expect(mem.food).toBeUndefined();
+      expect(mem.water).toBeUndefined();
+      // Les positions de scan (encore utilisées par PerceptionSystem) sont conservées.
+      expect('lastFoodScanX' in mem).toBe(true);
+      expect('lastWaterScanX' in mem).toBe(true);
+    }
+  });
+
+  it('refuse une version différente de 11', () => {
+    const simulation = makeSimulation('migration-v11-wrong');
+    const v12 = simulation.captureSnapshot();
+    simulation.dispose();
+    expect(() => migrateSnapshotV11ToV12(v12)).toThrow();
+  });
+
+  it('ne touche pas le snapshot original (pure)', () => {
+    const simulation = makeSimulation('migration-v11-purity');
+    const v11 = asV11Snapshot(simulation.captureSnapshot());
+    simulation.dispose();
+    migrateSnapshotV11ToV12(v11);
+    expect(v11.version).toBe(11);
+  });
+
+  it('Simulation.restoreSnapshot migre automatiquement une sauvegarde v11', () => {
+    const source = makeSimulation('migration-v11-e2e');
+    source.start();
+    source.step(30);
+    const v11 = asV11Snapshot(source.captureSnapshot());
+    source.dispose();
+
+    const target = makeSimulation('migration-v11-e2e');
+    expect(() => target.restoreSnapshot(v11)).not.toThrow();
     target.dispose();
   });
 });

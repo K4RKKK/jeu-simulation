@@ -87,7 +87,17 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // `category` / `scalar`) : un `value: string` libre aurait fini comparé par égalité de
 // chaîne dans des dizaines de systèmes futurs avec un risque de désaccord silencieux.
 // Migration : une ancienne valeur `string` devient `{ kind: 'category', code: value }`.
-export const SIMULATION_SNAPSHOT_VERSION = 11;
+// v12 : Phase 3.5 — `MemoryComponent` réduit aux seules positions de scan
+// (`lastFoodScanX/Z`, `lastWaterScanX/Z`) ; les tableaux `food`/`water` (souvenirs
+// spécifiques nourriture/eau) ont été retirés car plus aucun consommateur : la mémoire
+// spatiale vit désormais dans `CognitiveMemory.spatial`, lue par `NeedSatisfactionSystem`.
+// Migration : les entrées Memory d'une sauvegarde v11 sont acceptées telles quelles, mais
+// `food`/`water` sont dépouillés lors de la restauration — l'information n'est PAS
+// reportée dans `CognitiveMemory` (déjà rempli à part par le PerceptionSystem de v11+, et
+// une reprojection créerait des souvenirs dupliqués sans confiance ni précision correcte).
+// Perte de fonctionnalité assumée : au chargement, la décision vitale attend un nouveau
+// scan (quelques ticks) avant d'avoir un souvenir de rive/ressource utilisable.
+export const SIMULATION_SNAPSHOT_VERSION = 12;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -342,6 +352,50 @@ export function migrateSnapshotV10ToV11(snapshot: SimulationSnapshot): Simulatio
         ...snapshot.entities.components,
         CognitiveMemory: migratedCogMem,
         CognitiveKnowledge: migratedCogKnow,
+      },
+    },
+  };
+}
+
+/**
+ * Migre un snapshot v11 vers v12 (Phase 3.5) : retire `food`/`water` des entrées
+ * `Memory`, désormais réduites aux positions de scan. Voir la doc de
+ * `SIMULATION_SNAPSHOT_VERSION` pour le compromis (perte de mémoire spécifique acceptée :
+ * `CognitiveMemory` est déjà remplie et sera rescannée en quelques ticks).
+ *
+ * Pure et idempotente : ne mute jamais `snapshot`, retourne toujours un nouvel objet.
+ */
+export function migrateSnapshotV11ToV12(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 11) {
+    throw new Error(`migrateSnapshotV11ToV12: version ${snapshot.version} inattendue (11 requis)`);
+  }
+
+  type MemoryLegacy = {
+    food?: unknown[];
+    water?: unknown[];
+    lastFoodScanX: number | null;
+    lastFoodScanZ: number | null;
+    lastWaterScanX: number | null;
+    lastWaterScanZ: number | null;
+  };
+
+  const memoryEntries = (snapshot.entities.components.Memory ?? []) as unknown as [
+    EntityId,
+    MemoryLegacy,
+  ][];
+  const migratedMemory: [EntityId, unknown][] = memoryEntries.map(([id, mem]) => {
+    const { food: _f, water: _w, ...kept } = mem;
+    return [id, kept];
+  });
+
+  return {
+    ...snapshot,
+    version: 12,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        Memory: migratedMemory,
       },
     },
   };

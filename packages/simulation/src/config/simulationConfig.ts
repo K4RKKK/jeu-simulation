@@ -246,13 +246,18 @@ export interface PerceptionConfig {
    * côté.
    */
   foodRescanMoveThresholdM: number;
-  /** Durée de vie d'un souvenir de nourriture, en secondes de jeu. */
+  /**
+   * Champs hérités de Phase 3.1-3.2 : plus lus depuis 3.5 (les souvenirs vivent dans
+   * `CognitiveMemory`, dont la capacité est réglée par `cognition.maxSpatialEntries` et
+   * la persistance par `cognition.spatialConfidenceHalfLifeSeconds`). Conservés dans la
+   * `SimulationConfig` pour ne pas changer le `configFingerprint` de sauvegardes v11
+   * existantes — un retrait cassera leur chargement (`restoreSnapshot` vérifie l'empreinte
+   * après la migration v11→v12). À supprimer lors d'un prochain bump qui incluera de
+   * toute façon un renouvellement d'empreinte.
+   */
   foodMemoryTtlSeconds: number;
-  /** Durée de vie d'un souvenir de rive, en secondes de jeu. */
   waterMemoryTtlSeconds: number;
-  /** Nombre maximal de souvenirs de nourriture (le plus ancien est oublié). */
   maxFoodEntries: number;
-  /** Nombre maximal de souvenirs de rives (le plus ancien est oublié). */
   maxWaterEntries: number;
 }
 
@@ -480,8 +485,7 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     waterScanStepM: 12,
     waterRescanMoveThresholdM: 15,
     foodRescanMoveThresholdM: 15,
-    // Un buisson repéré reste en tête quelques heures ; une rive, un lieu d'importance
-    // vitale, jusqu'à une demi-journée. Ce sont des souvenirs, pas des cartes.
+    // Legacy Phase 3.1-3.2, non lus depuis 3.5 (voir le champ ci-dessus).
     foodMemoryTtlSeconds: 3600,
     waterMemoryTtlSeconds: 7200,
     maxFoodEntries: 16,

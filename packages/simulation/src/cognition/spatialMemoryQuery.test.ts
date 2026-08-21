@@ -131,13 +131,7 @@ describe('nearestKnownFood', () => {
   it('applique le score confiance/précision comme nearestKnownWater', () => {
     const doute = foodMemory(0, 20, 0, 'a', { confidence01: 0.1 });
     const sûr = foodMemory(1, 100, 0, 'b');
-    const chosen = nearestKnownFood(
-      [doute, sûr],
-      0,
-      0,
-      () => ({ foodKcal: 100 }),
-      alwaysFresh,
-    );
+    const chosen = nearestKnownFood([doute, sûr], 0, 0, () => ({ foodKcal: 100 }), alwaysFresh);
     expect(chosen?.entry.id).toBe(sûr.id);
   });
 });

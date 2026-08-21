@@ -321,24 +321,14 @@ function fnv1aHashState(state: CanonicalState): string {
     }
 
     if (memory) {
-      // Tous les champs de `FoodMemoryEntry` participent : deux individus qui se
-      // souviennent de la même position/kcal mais d'un `definitionId`, `ownerChunkKey`
-      // ou `localId` différent ont des souvenirs réellement distincts (le premier
-      // détermine le comportement d'évitement après empoisonnement, les deux derniers
-      // l'adresse réseau utilisée pour retrouver la ressource) — les omettre du hash
-      // masquerait cette divergence.
-      const food = memory.food
-        .map(
-          (entry) =>
-            `${entry.resourceId}:${entry.definitionId}:${entry.ownerChunkKey}:${entry.localId}@` +
-            `${q(entry.x)},${q(entry.z)}:${q(entry.foodKcal)}:${entry.lastSeenTick}`,
-        )
-        .join(';');
-      const water = memory.water
-        .map((entry) => `${q(entry.x)},${q(entry.z)}:${entry.lastSeenTick}`)
-        .join(';');
+      // Phase 3.5 : `Memory` ne porte plus que les positions du dernier scan — les
+      // souvenirs eux-mêmes (rives, ressources) sont hachés via `CognitiveMemory`
+      // ci-dessous. Ces positions gouvernent le seuil de rescan de `PerceptionSystem` :
+      // deux individus dont l'un a rescanné plus récemment n'ont pas le même futur
+      // (le prochain rescan tombe à un moment différent), les omettre masquerait cette
+      // divergence.
       write(
-        `m:${entity}:${food}|${water}|` +
+        `m:${entity}:` +
           `${memory.lastFoodScanX === null ? 'n' : q(memory.lastFoodScanX)},` +
           `${memory.lastFoodScanZ === null ? 'n' : q(memory.lastFoodScanZ)}|` +
           `${memory.lastWaterScanX === null ? 'n' : q(memory.lastWaterScanX)},` +

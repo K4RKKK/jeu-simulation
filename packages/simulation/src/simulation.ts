@@ -22,6 +22,7 @@ import {
   captureEntities,
   migrateSnapshotV9ToV10,
   migrateSnapshotV10ToV11,
+  migrateSnapshotV11ToV12,
   restoreEntities,
   type SimulationSnapshot,
 } from './persistence/simulationSnapshot.js';
@@ -293,11 +294,12 @@ export class Simulation {
   restoreSnapshot(rawSnapshot: SimulationSnapshot): void {
     this.assertNotDisposed();
     // Migrations explicites (pas de rejet aveugle) : voir la doc de
-    // `SIMULATION_SNAPSHOT_VERSION` sur pourquoi les migrations v9→v10 et v10→v11
+    // `SIMULATION_SNAPSHOT_VERSION` sur pourquoi les migrations en chaîne v9→v10→v11→v12
     // valent mieux qu'un simple bump qui invaliderait des sauvegardes déjà distribuées.
     let snapshot: SimulationSnapshot = rawSnapshot;
     if (snapshot.version === 9) snapshot = migrateSnapshotV9ToV10(snapshot);
     if (snapshot.version === 10) snapshot = migrateSnapshotV10ToV11(snapshot);
+    if (snapshot.version === 11) snapshot = migrateSnapshotV11ToV12(snapshot);
     if (snapshot.version !== SIMULATION_SNAPSHOT_VERSION) {
       throw new Error(
         `restoreSnapshot: version ${snapshot.version} incompatible avec ${SIMULATION_SNAPSHOT_VERSION}`,
