@@ -1,6 +1,6 @@
 import {
   Activity,
-  Memory,
+  CognitiveMemory,
   Movement,
   Needs,
   NeedsState,
@@ -8,7 +8,7 @@ import {
 } from '../../components/index.js';
 import type {
   ActivityComponent,
-  MemoryComponent,
+  CognitiveMemoryComponent,
   MovementComponent,
   NeedsComponent,
   NeedsStateComponent,
@@ -23,11 +23,7 @@ import {
   endResourceInteraction,
   harvestInteractiveResource,
 } from '../../world/resourceInteraction.js';
-import {
-  nearestFood,
-  nearestWater,
-  type PerceptionMemoryConfig,
-} from '../perception/perceptionModel.js';
+import { nearestKnownFood, nearestKnownWater } from '../../cognition/spatialMemoryQuery.js';
 
 /**
  * Décide des actions vitales quand un besoin devient critique (CLAUDE.md règle 7 : il
@@ -39,8 +35,15 @@ import {
  * l'individu tranquille pendant l'action.
  *
  * **Aucune omniscience** : l'eau et la nourriture ne sont pas cherchées dans le monde,
- * mais dans la mémoire individuelle remplie par la perception. Sans souvenir, pas de
- * plan : l'errance explore, la perception mémorise, et la décision suivra.
+ * mais dans la mémoire cognitive individuelle remplie par la perception. Sans souvenir,
+ * pas de plan : l'errance explore, la perception mémorise, et la décision suivra.
+ *
+ * Phase 3.5 : lit `CognitiveMemory.spatial` (souvenirs vieillissables, avec confiance et
+ * précision) au lieu de l'ancien `Memory.food`/`Memory.water` (index étroit sans notion
+ * de fiabilité). Le choix d'une cible n'est plus « le plus proche à vol d'oiseau » mais
+ * un compromis distance/précision/confiance — voir `spatialMemoryQuery.ts` pour la
+ * formule. `Memory` reste écrit par `PerceptionSystem` (positions de scan encore utiles)
+ * mais n'est plus consulté par la décision.
  */
 export class NeedSatisfactionSystem implements SimulationSystem {
   readonly name = 'NeedSatisfactionSystem';
@@ -48,7 +51,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   update(ctx: SystemUpdateContext): void {
     ctx.entities.each(
-      [Needs, Activity, Movement, Transform, Memory],
+      [Needs, Activity, Movement, Transform, CognitiveMemory],
       (entity, needs, activity, movement, transform, memory) => {
         // Le plan n'existe que pour les besoins critiques : on le crée au premier passage.
         const state =
@@ -101,7 +104,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity: ActivityComponent,
     movement: MovementComponent,
     transform: TransformComponent,
-    memory: MemoryComponent,
+    memory: CognitiveMemoryComponent,
   ): void {
     const { needs: config } = ctx.config;
     if (needs.energy < config.energy.exhaustedThreshold) {
@@ -128,9 +131,9 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity: ActivityComponent,
     movement: MovementComponent,
     transform: TransformComponent,
-    memory: MemoryComponent,
+    memory: CognitiveMemoryComponent,
   ): void {
-    const spot = nearestWater(memory, transform.x, transform.z, ctx.tick, this.memoryConfig(ctx));
+    const spot = nearestKnownWater(memory.spatial, transform.x, transform.z);
     // Sans souvenir de rive, pas de plan : l'errance explore, la perception mémorisera.
     if (!spot) return;
     const distance = Math.round(distance2D(transform.x, transform.z, spot.x, spot.z));
@@ -143,7 +146,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       'seekWater',
       spot.x,
       spot.z,
-      `part boire (se souvient d'une rive à ${distance} m)`,
+      `part boire (se souvient d'une rive à ${distance} m, ${describeConfidence(spot.confidence01)})`,
     );
   }
 
@@ -154,21 +157,22 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity: ActivityComponent,
     movement: MovementComponent,
     transform: TransformComponent,
-    memory: MemoryComponent,
+    memory: CognitiveMemoryComponent,
   ): void {
     // Volontairement aucune connaissance de la toxicité (CLAUDE.md « Pas de faux code » et
     // règle 12) : elle n'entre jamais en mémoire, elle se découvre en mangeant. Le seul
-    // critère du choix est l'apparence de nourriture (`foodKcal > 0`) mémorisée.
-    const spot = nearestFood(
-      memory,
+    // critère du choix est l'apparence de nourriture (`foodKcal > 0`), relue à travers
+    // `worldRef` — non stockée dans la cognition (vérité moteur cachée).
+    const chosen = nearestKnownFood(
+      memory.spatial,
       transform.x,
       transform.z,
-      ctx.tick,
-      this.memoryConfig(ctx),
+      (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
       (resourceId) => ctx.world.delta.isDepleted(resourceId),
     );
-    if (!spot) return;
-    const distance = Math.round(distance2D(transform.x, transform.z, spot.x, spot.z));
+    if (!chosen) return;
+    const { entry, spawn } = chosen;
+    const distance = Math.round(distance2D(transform.x, transform.z, entry.x, entry.z));
     this.startTravel(
       ctx,
       entity,
@@ -176,13 +180,13 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       activity,
       movement,
       'seekFood',
-      spot.x,
-      spot.z,
-      `part chercher de la nourriture (se souvient de ${spot.definitionId} à ${distance} m)`,
+      entry.x,
+      entry.z,
+      `part chercher de la nourriture (se souvient de ${spawn.definitionId} à ${distance} m, ${describeConfidence(entry.confidence01)})`,
     );
-    state.resourceId = spot.resourceId;
-    state.resourceOwnerChunkKey = spot.ownerChunkKey;
-    state.resourceLocalId = spot.localId;
+    state.resourceId = spawn.id;
+    state.resourceOwnerChunkKey = spawn.ownerChunkKey;
+    state.resourceLocalId = spawn.localId;
   }
 
   private onArrival(
@@ -411,16 +415,15 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     return ctx.tick + Math.max(1, Math.ceil(seconds / ctx.config.time.gameSecondsPerTick));
   }
 
-  private memoryConfig(ctx: SystemUpdateContext): PerceptionMemoryConfig {
-    return {
-      foodMemoryTtlTicks: Math.ceil(
-        ctx.config.perception.foodMemoryTtlSeconds / ctx.clock.gameSecondsPerTick,
-      ),
-      waterMemoryTtlTicks: Math.ceil(
-        ctx.config.perception.waterMemoryTtlSeconds / ctx.clock.gameSecondsPerTick,
-      ),
-      maxFoodEntries: ctx.config.perception.maxFoodEntries,
-      maxWaterEntries: ctx.config.perception.maxWaterEntries,
-    };
-  }
+}
+
+/**
+ * Traduit la confiance chiffrée en qualificatif lisible pour la `reason` (CLAUDE.md
+ * règle 12). Les seuils suivent la même logique que le score de `spatialMemoryQuery` :
+ * une confiance haute est un souvenir « net », basse un souvenir « flou ».
+ */
+function describeConfidence(confidence01: number): string {
+  if (confidence01 >= 0.75) return 'souvenir net';
+  if (confidence01 >= 0.4) return 'souvenir un peu flou';
+  return 'souvenir très flou';
 }

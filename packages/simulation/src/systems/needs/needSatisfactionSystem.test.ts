@@ -3,15 +3,17 @@ import type { ResourceSpawn } from '@civ/procedural';
 import { NavGrid, PathFindingService } from '@civ/pathfinding';
 import {
   Activity,
-  Memory,
+  CognitiveMemory,
   Movement,
   Needs,
   NeedsState,
   Transform,
 } from '../../components/index.js';
-import type { MemoryComponent } from '../../components/index.js';
+import type { CognitiveMemoryComponent } from '../../components/index.js';
+import { observeResource, observeShore } from '../../cognition/observationBuilder.js';
+import { rememberSpatial } from '../../cognition/spatialMemoryModel.js';
 import { Simulation } from '../../simulation.js';
-import { rememberFood, rememberWater, scanForShorePoint } from '../perception/perceptionModel.js';
+import { scanForShorePoint } from '../perception/perceptionModel.js';
 import { MovementSystem } from '../movementSystem.js';
 import { PathfindingSystem } from '../pathfinding/pathfindingSystem.js';
 import { terrainTileCostProvider } from '../pathfinding/terrainCostProvider.js';
@@ -73,14 +75,14 @@ function setNeeds(
   if (needs.energy !== undefined) component.energy = needs.energy;
 }
 
-/** Semer la mémoire d'un humain : c'est le rôle de la perception de faire ça en vrai. */
-function seedMemory(simulation: Simulation): MemoryComponent {
-  return simulation.entities.getComponentOrThrow(simulation.humanIds()[0]!, Memory);
+/** Semer la mémoire cognitive d'un humain : c'est le rôle de la perception en vrai. */
+function seedCognition(simulation: Simulation): CognitiveMemoryComponent {
+  return simulation.entities.getComponentOrThrow(simulation.humanIds()[0]!, CognitiveMemory);
 }
 
 /**
  * Trouve une ressource comestible dans le monde (génération directe, comme le ferait la
- * perception) et place l'humain dessus, puis sème le souvenir correspondant.
+ * perception) et place l'humain dessus, puis sème le souvenir cognitif correspondant.
  */
 function seedFoodUnderHuman(
   simulation: Simulation,
@@ -98,28 +100,19 @@ function seedFoodUnderHuman(
   transform.x = spawn!.x;
   transform.z = spawn!.z;
 
-  rememberFood(
-    seedMemory(simulation),
-    {
-      resourceId: spawn!.id,
-      definitionId: spawn!.definitionId,
-      ownerChunkKey: spawn!.ownerChunkKey,
-      localId: spawn!.localId,
-      x: spawn!.x,
-      z: spawn!.z,
-      foodKcal: spawn!.foodKcal,
-    },
-    simulation.clock.currentTick,
-    { foodMemoryTtlTicks: 1e9, waterMemoryTtlTicks: 1e9, maxFoodEntries: 16, maxWaterEntries: 4 },
+  rememberSpatial(
+    seedCognition(simulation),
+    observeResource(spawn!, simulation.clock.currentTick),
+    simulation.config.cognition,
   );
   return spawn!;
 }
 
 /**
  * Trouve une rive **atteignable** dans le voisinage (rayons croissants) et sème son
- * souvenir. Sans vérification d'atteignabilité, le test dépendrait de la géographie de
- * la seed : une rive derrière un lac serait « mémorisée » mais sans chemin, et l'humain
- * resterait au camp — le test échouerait pour la mauvaise raison.
+ * souvenir cognitif. Sans vérification d'atteignabilité, le test dépendrait de la
+ * géographie de la seed : une rive derrière un lac serait « mémorisée » mais sans
+ * chemin, et l'humain resterait au camp — le test échouerait pour la mauvaise raison.
  */
 function seedWaterNearHuman(simulation: Simulation, radiusM: number): { x: number; z: number } {
   const world = simulation.world;
@@ -139,12 +132,11 @@ function seedWaterNearHuman(simulation: Simulation, radiusM: number): { x: numbe
     if (point === null) continue;
     if (!isReachable(simulation, { x: transform.x, z: transform.z }, point)) continue;
 
-    rememberWater(seedMemory(simulation), point, simulation.clock.currentTick, {
-      foodMemoryTtlTicks: 1e9,
-      waterMemoryTtlTicks: 1e9,
-      maxFoodEntries: 16,
-      maxWaterEntries: 4,
-    });
+    rememberSpatial(
+      seedCognition(simulation),
+      observeShore(point, simulation.clock.currentTick),
+      simulation.config.cognition,
+    );
     return point;
   }
   throw new Error(`aucune rive atteignable dans ${radiusM} m autour de la position initiale`);
