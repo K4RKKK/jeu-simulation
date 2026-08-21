@@ -77,6 +77,7 @@ export function nearestKnownFood<Spawn extends { foodKcal: number }>(
   fromZ: number,
   resolveSpawn: (worldRef: WorldRef) => Spawn | null,
   isDepleted: (resourceId: string) => boolean,
+  preference: (entry: SpatialMemoryEntry, spawn: Spawn) => number = () => 1,
 ): { entry: SpatialMemoryEntry; spawn: Spawn } | null {
   let best: { entry: SpatialMemoryEntry; spawn: Spawn } | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
@@ -87,7 +88,9 @@ export function nearestKnownFood<Spawn extends { foodKcal: number }>(
     const spawn = resolveSpawn(entry.worldRef);
     if (!spawn) continue;
     if (spawn.foodKcal <= 0) continue;
-    const s = score(entry, fromX, fromZ);
+    // Une préférence apprise affine un souvenir déjà valide, elle ne le rend jamais
+    // impossible : à faim extrême, une piste très suspecte reste une option de survie.
+    const s = score(entry, fromX, fromZ) / Math.max(0.1, preference(entry, spawn));
     if (s < bestScore) {
       best = { entry, spawn };
       bestScore = s;

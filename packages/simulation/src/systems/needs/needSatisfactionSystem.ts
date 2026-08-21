@@ -1,5 +1,6 @@
 import {
   Activity,
+  CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
   Movement,
@@ -10,6 +11,7 @@ import {
 } from '../../components/index.js';
 import type {
   ActivityComponent,
+  CognitiveKnowledgeComponent,
   CognitiveMemoryComponent,
   HumanCognitionComponent,
   MovementComponent,
@@ -28,6 +30,7 @@ import {
   harvestInteractiveResource,
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
+import { learnFoodEdibility, learnedEdibility01 } from '../../cognition/foodBeliefModel.js';
 import { nearestKnownFood, nearestKnownWater } from '../../cognition/spatialMemoryQuery.js';
 import {
   pickBestOption,
@@ -63,8 +66,17 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   update(ctx: SystemUpdateContext): void {
     ctx.entities.each(
-      [Needs, Activity, Movement, Transform, CognitiveMemory, HumanCognition, Personality],
-      (entity, needs, activity, movement, transform, memory, cognition, personality) => {
+      [
+        Needs,
+        Activity,
+        Movement,
+        Transform,
+        CognitiveMemory,
+        CognitiveKnowledge,
+        HumanCognition,
+        Personality,
+      ],
+      (entity, needs, activity, movement, transform, memory, knowledge, cognition, personality) => {
         // Le plan n'existe que pour les besoins critiques : on le crée au premier passage.
         const state =
           ctx.entities.getComponent(entity, NeedsState) ??
@@ -92,6 +104,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
             movement,
             transform,
             memory,
+            knowledge,
             cognition,
             personality,
           );
@@ -113,7 +126,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         const rested =
           state.action === 'rest' && needs.energy >= ctx.config.needs.energy.restTarget;
         if (fulfilled || replete || rested || ctx.tick >= state.untilTick) {
-          this.finishAction(ctx, entity, needs, state, activity, transform, memory);
+          this.finishAction(ctx, entity, needs, state, activity, transform, memory, knowledge);
         }
       },
     );
@@ -128,6 +141,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     movement: MovementComponent,
     transform: TransformComponent,
     memory: CognitiveMemoryComponent,
+    knowledge: CognitiveKnowledgeComponent,
     cognition: HumanCognitionComponent,
     personality: PersonalityComponent,
   ): void {
@@ -139,6 +153,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       transform.z,
       (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
       (resourceId) => ctx.world.delta.isDepleted(resourceId),
+      (entry) => learnedEdibility01(knowledge, entry.subjectConceptId) ?? 1,
     );
     const recentPoisonings = memory.episodic.filter(
       (entry) =>
@@ -147,7 +162,13 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
     const { winner, reason } = pickBestOption([
       scoreDrink(needs, knownWater !== null, config.hydration.criticalThreshold),
-      scoreEat(needs, knownFood !== null, recentPoisonings, config.hunger.criticalThreshold),
+      scoreEat(
+        needs,
+        knownFood !== null,
+        recentPoisonings,
+        knownFood === null ? null : learnedEdibility01(knowledge, knownFood.entry.subjectConceptId),
+        config.hunger.criticalThreshold,
+      ),
       scoreRest(needs, config.energy.exhaustedThreshold),
       scoreExplore(personality),
     ]);
@@ -169,7 +190,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       return;
     }
     if (knownFood !== null) {
-      this.seekFood(ctx, entity, state, activity, movement, transform, memory);
+      this.seekFood(ctx, entity, state, activity, movement, transform, memory, knowledge);
     }
   }
 
@@ -207,17 +228,18 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     movement: MovementComponent,
     transform: TransformComponent,
     memory: CognitiveMemoryComponent,
+    knowledge: CognitiveKnowledgeComponent,
   ): void {
-    // Volontairement aucune connaissance de la toxicité (CLAUDE.md « Pas de faux code » et
-    // règle 12) : elle n'entre jamais en mémoire, elle se découvre en mangeant. Le seul
-    // critère du choix est l'apparence de nourriture (`foodKcal > 0`), relue à travers
-    // `worldRef` — non stockée dans la cognition (vérité moteur cachée).
+    // La toxicité réelle reste cachée : seul le concept visuel peut porter une croyance
+    // construite par les expériences antérieures. La nutrition moteur ne sert ici qu'à
+    // distinguer un aliment d'une ressource non alimentaire.
     const chosen = nearestKnownFood(
       memory.spatial,
       transform.x,
       transform.z,
       (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
       (resourceId) => ctx.world.delta.isDepleted(resourceId),
+      (entry) => learnedEdibility01(knowledge, entry.subjectConceptId) ?? 1,
     );
     if (!chosen) return;
     const { entry, spawn } = chosen;
@@ -347,8 +369,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity.kind = 'eat';
     activity.reason = `mange pour apaiser sa faim (faim ${needs.hunger.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
-    // La toxicité n'est connue qu'à l'ingestion : si la ressource était douteuse, les
-    // symptômes commencent maintenant — trop tard pour les éviter.
+    // La toxicité réelle n'est révélée qu'à l'ingestion : les symptômes commencent
+    // maintenant, puis la fin du repas mettra à jour une croyance sur son apparence.
     if (toxicity > ctx.config.needs.toxicity.effectThreshold01) {
       state.poisoningToxicity01 = toxicity;
       state.poisoningUntilTick =
@@ -410,6 +432,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity: ActivityComponent,
     transform: TransformComponent,
     memory: CognitiveMemoryComponent,
+    knowledge: CognitiveKnowledgeComponent,
   ): void {
     const done = state.action;
     if (done === 'eat' && state.resourceId !== null) {
@@ -443,6 +466,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       // la valeur d'un empoisonnement passé, ce qui étiquetterait à tort tout repas sain
       // ultérieur comme un empoisonnement.
       const poisoned = state.poisoningUntilTick >= ctx.tick;
+      const conceptId = this.foodConceptAt(memory, state);
       rememberEpisodic(
         memory,
         {
@@ -452,6 +476,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           x: transform.x,
           z: transform.z,
           outcome: poisoned ? 'physiology.poisoning_started' : 'physiology.satiety_increased',
+          ...(conceptId === null ? {} : { subjectConcept: conceptId }),
           // Un empoisonnement ordinaire (toxicité 0.3) est déjà bien plus marquant qu'un
           // repas sain (0.2) ; un empoisonnement sévère (0.9) devient un vrai traumatisme
           // qui va survivre à des dizaines de repas suivants.
@@ -459,6 +484,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         },
         cognitionConfig,
       );
+      if (conceptId !== null) learnFoodEdibility(knowledge, conceptId, !poisoned, ctx.tick);
     } else if (done === 'rest') {
       rememberEpisodic(
         memory,
@@ -490,6 +516,20 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           ? `repu (a mangé)`
           : `reposé (énergie ${needs.energy.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
+  }
+
+  private foodConceptAt(
+    memory: CognitiveMemoryComponent,
+    state: NeedsStateComponent,
+  ): string | null {
+    if (state.resourceId === null || state.resourceOwnerChunkKey === null) return null;
+    return (
+      memory.spatial.find(
+        (entry) =>
+          entry.worldRef?.resourceId === state.resourceId &&
+          entry.worldRef.ownerChunkKey === state.resourceOwnerChunkKey,
+      )?.subjectConceptId ?? null
+    );
   }
 
   private startTravel(

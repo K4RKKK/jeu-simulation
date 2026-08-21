@@ -3,6 +3,7 @@ import type { ResourceSpawn } from '@civ/procedural';
 import { NavGrid, PathFindingService } from '@civ/pathfinding';
 import {
   Activity,
+  CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
   Movement,
@@ -415,7 +416,7 @@ describe('NeedSatisfactionSystem', () => {
   it('écrit un épisode `food.eaten` avec un outcome d’empoisonnement pour une ressource toxique', () => {
     const simulation = needsSystems();
     simulation.start();
-    seedFoodUnderHuman(simulation, (candidate) => candidate.foodToxicity01 > 0);
+    const toxic = seedFoodUnderHuman(simulation, (candidate) => candidate.foodToxicity01 > 0);
     const entity = simulation.humanIds()[0]!;
     setNeeds(simulation, { hydration: 1, hunger: 0.05 });
 
@@ -426,8 +427,19 @@ describe('NeedSatisfactionSystem', () => {
     const foodEpisode = memory.episodic.find((e) => e.eventType === 'food.eaten');
     expect(foodEpisode).toBeDefined();
     expect(foodEpisode?.outcome).toBe('physiology.poisoning_started');
+    expect(foodEpisode?.subjectConcept).toBe(toxic.perceptualConceptId);
     // Un empoisonnement est significativement plus marquant qu'un repas ordinaire (0.2).
     expect(foodEpisode!.emotionalStrength01).toBeGreaterThan(0.5);
+    const knowledge = simulation.entities.getComponentOrThrow(entity, CognitiveKnowledge);
+    expect(knowledge.beliefs).toContainEqual({
+      id: 0,
+      subjectConcept: toxic.perceptualConceptId,
+      property: 'food.edible',
+      value: { kind: 'probability', value01: 0 },
+      confidence01: 0.5,
+      evidenceCount: 1,
+      lastUpdatedTick: foodEpisode!.tick,
+    });
     simulation.dispose();
   });
 

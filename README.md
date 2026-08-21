@@ -195,9 +195,9 @@ drainées en continu par son métabolisme (la marche coûte, la chaleur assoiffe
 fait dormir). Un système dédié hiérarchise les urgences (épuisement > soif > faim) puis
 agit : chercher l'eau la plus proche, une plante comestible, boire, manger, se reposer.
 Manger retire la ressource du monde, qui devient rare. La toxicité d'un aliment se
-découvre en le mangeant (conséquence physiologique immédiate) — elle n'est **ni
-mémorisée ni apprise** : un humain peut remanger le même champignon toxique plus tard,
-rien ne l'en empêche encore. Ce sera le rôle d'un futur système de connaissances.
+découvre en le mangeant : chaque humain consolide alors une croyance personnelle sur son
+apparence. Cette croyance pénalise les aliments déjà associés à un empoisonnement, sans
+révéler la toxicité réelle ni empêcher une tentative de survie en cas de faim extrême.
 
 **Persistance.** Le modèle est « état = seed + version de génération + configuration +
 snapshot ». Une sauvegarde capture l'horloge, le RNG, les entités/composants,
@@ -245,7 +245,8 @@ peuplement en ressources adressées par `(chunkKey, localId)` compact) · `World
   reposer ; ressources finies) · `PerceptionSystem` + `Memory` (chaque humain ne connaît
   que ce qu'il a vu : rives et ressources en mémoire individuelle ; scans répartis en
   cohortes déterministes sur plusieurs ticks et ressources comestibles filtrées une fois
-  par chunk partagé ; la toxicité se découvre en mangeant, sans être mémorisée ni apprise ;
+  par chunk partagé ; toxicité découverte par ingestion et croyances individuelles sur les
+  apparences alimentaires ;
   décisions « se souvient… ») ·
   `PathfindingSystem` (grille de navigation 2 m en coordonnées monde correctement
   converties, requêtes appariées par identifiant — jamais par cible partagée entre
@@ -267,9 +268,8 @@ peuplement en ressources adressées par `(chunkKey, localId)` compact) · `World
 
 ### Volontairement absent
 
-Santé, blessures, maladies, poison, IA utilitaire, planificateur d'actions,
-connaissances (apprentissage durable — la toxicité n'est aujourd'hui qu'une conséquence
-immédiate, jamais retenue), compétences, expérimentation, feu, enseignement, relations,
+Santé, blessures, maladies, poison, IA utilitaire complète, planificateur d'actions,
+compétences, expérimentation, feu, enseignement, relations,
 langage, inventaire, artisanat, construction, apparition de nouvelles familles de ressources.
 
 Ce n'est pas un oubli : une excellente fondation vaut mieux que trente systèmes

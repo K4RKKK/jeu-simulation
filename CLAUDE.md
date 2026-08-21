@@ -200,9 +200,9 @@ cible), `TemporaryWanderSystem`, `MetabolismSystem`, `PerceptionSystem` + `Memor
 (mémoire individuelle des rives et ressources vues, jamais omnisciente ; population
 répartie en cohortes déterministes sur plusieurs ticks, cache de ressources comestibles
 partagé uniquement pendant le scan courant),
-`NeedSatisfactionSystem` (décide depuis la mémoire, raisons « se souvient… » ; la
-toxicité n'est ni mémorisée ni apprise — un même aliment toxique peut être remangé,
-c'est une conséquence physiologique immédiate, pas une connaissance durable),
+`NeedSatisfactionSystem` (décide depuis la mémoire, raisons « se souvient… » ; une
+ingestion met à jour une croyance individuelle sur l'apparence alimentaire, jamais une
+vérité globale sur la toxicité),
 `PathfindingSystem` (grille de tuiles en coordonnées monde correctement converties,
 requêtes appariées par id — jamais par cible partagée —, A* incrémental dont la frontière
 est reprise entre les ticks, file FIFO à budget lissé, annulation des recherches
@@ -245,7 +245,7 @@ déterminisme (`pnpm test` fait foi pour le compte exact — volontairement pas 
 il dérive à chaque ajout).
 
 **Volontairement absent** (ne pas « compléter » sans plan) : santé, blessures, maladies,
-poison, IA utilitaire, planificateur d'actions, connaissances (apprentissage durable),
+poison, IA utilitaire complète, planificateur d'actions,
 compétences, expérimentation, feu, enseignement, relations, langage, inventaire,
 artisanat, construction, apparition de nouvelles familles de ressources.
 

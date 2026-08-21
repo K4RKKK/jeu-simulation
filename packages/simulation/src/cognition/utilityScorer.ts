@@ -16,8 +16,8 @@ import type { NeedsComponent, PersonalityComponent } from '../components/index.j
  * en confort ne pèse rien, un besoin critique domine tout, et l'ordre relatif entre
  * besoins critiques est modulé par les coefficients ci-dessous.
  *
- * Les coefficients sont réglés pour reproduire l'ordre de priorité de la Phase 3.5
- * (énergie > hydration > faim) : `WEIGHT_REST > WEIGHT_DRINK > WEIGHT_EAT`.
+ * Les coefficients préservent l'ordre physiologique énergie > hydratation > faim :
+ * `WEIGHT_REST > WEIGHT_DRINK > WEIGHT_EAT`.
  * `WEIGHT_EXPLORE` reste bas, ce qui donne la baseline (« ne rien faire de vital »).
  */
 
@@ -73,20 +73,23 @@ export function scoreDrink(
 
 /**
  * Score de « manger ». Comme `scoreDrink`, avec une pénalité additionnelle si les
- * épisodes récents comptent un empoisonnement (Phase 3.3) — la « leçon » est temporaire
- * et sémantique, pas encore une croyance persistante (viendra en 3.7).
+ * une croyance personnelle sur l'apparence choisie réduit la préférence pour un aliment
+ * déjà associé à un empoisonnement. La borne basse préserve une tentative de survie quand
+ * la faim devient extrême.
  */
 export function scoreEat(
   needs: NeedsComponent,
   hasKnownFood: boolean,
   recentPoisonings: number,
+  learnedEdibility01: number | null,
   criticalThreshold: number,
 ): DecisionOption {
   const need = urgency(needs.hunger, criticalThreshold);
   const memory = hasKnownFood ? 1 : NO_MEMORY_PENALTY;
   // Chaque empoisonnement récent divise le score par 2 (plafonné pour éviter l'inaction).
   const poisonPenalty = Math.max(0.1, 1 / (1 + recentPoisonings));
-  const score = WEIGHT_EAT * need * memory * poisonPenalty;
+  const learnedSafety = learnedEdibility01 === null ? 1 : Math.max(0.1, learnedEdibility01);
+  const score = WEIGHT_EAT * need * memory * poisonPenalty * learnedSafety;
   return {
     kind: 'eat',
     score,
@@ -95,6 +98,9 @@ export function scoreEat(
       { code: 'need.hunger.threshold', value: criticalThreshold },
       { code: 'memory.food.known', value: hasKnownFood ? 1 : 0 },
       { code: 'memory.poisoning.recent_count', value: recentPoisonings },
+      ...(learnedEdibility01 === null
+        ? []
+        : [{ code: 'belief.food.edible.probability', value: learnedEdibility01 }]),
     ],
   };
 }

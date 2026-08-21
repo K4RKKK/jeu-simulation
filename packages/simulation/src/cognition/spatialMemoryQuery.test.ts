@@ -134,4 +134,18 @@ describe('nearestKnownFood', () => {
     const chosen = nearestKnownFood([doute, sûr], 0, 0, () => ({ foodKcal: 100 }), alwaysFresh);
     expect(chosen?.entry.id).toBe(sûr.id);
   });
+
+  it('préfère une nourriture apprise comme sûre à une piste toxique plus proche', () => {
+    const suspecte = foodMemory(0, 5, 0, 'champignon');
+    const sûre = foodMemory(1, 20, 0, 'baie');
+    const chosen = nearestKnownFood(
+      [suspecte, sûre],
+      0,
+      0,
+      () => ({ foodKcal: 100 }),
+      alwaysFresh,
+      (entry) => (entry.worldRef?.resourceId === 'champignon' ? 0 : 1),
+    );
+    expect(chosen?.entry.id).toBe(sûre.id);
+  });
 });

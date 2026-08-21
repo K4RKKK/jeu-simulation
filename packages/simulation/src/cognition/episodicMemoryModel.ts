@@ -15,10 +15,9 @@ import type { CognitionConfig } from '../config/simulationConfig.js';
  * (associations concept → outcome), à alimenter des croyances (« ce lieu m'a fait du
  * bien »), ou à moduler des décisions par l'expérience.
  *
- * Aucun consommateur au moment où ce module est écrit — les écrits arrivent maintenant
- * (Phase 3.3), les lecteurs viendront avec l'Utility AI (3.4+) et la formation de
- * croyances. Écrire dès maintenant évite un « faux code » plus tard : chaque système
- * décideur qui apparaîtra aura déjà un historique à consulter au lieu d'un tableau vide.
+ * Les épisodes d'ingestion alimentent désormais `foodBeliefModel`; le scoreur d'utilité
+ * lit ensuite cette croyance personnelle. Les autres usages (lieux, social, transmission)
+ * restent volontairement ouverts plutôt que simulés prématurément.
  *
  * Éviction : le nombre d'entrées est borné par `CognitionConfig.maxEpisodicEntries` ;
  * quand la limite est franchie, `evictLeastIntense` retire l'entrée d'`emotionalStrength01`

@@ -23,9 +23,9 @@ export type BeliefValue =
 
 /**
  * Une croyance n'est pas une vérité recopiée depuis `ResourceDefinition` — elle est
- * construite (et corrigée) par l'expérience de CET humain (voir P3.4, sous-phase 3.3).
+ * construite (et corrigée) par l'expérience de CET humain.
  *
- * Exemple visé (non encore produit avant 3.3) :
+ * Exemple produit par `foodBeliefModel` après une ingestion :
  * `{ subjectConcept: "berry:red:round", property: "edible",
  *    value: { kind: "probability", value01: 0.72 }, confidence01: 0.72 }`
  */
@@ -45,8 +45,8 @@ export interface Belief {
  * différentes, voire contradictoires, sur le même concept.
  *
  * `nextBeliefId` alloue les `BeliefId` de cet humain (voir `allocateBeliefId`) — un
- * compteur local, jamais un aléa. Toujours créé vide à la naissance ; rempli par le
- * système d'expérience à partir de la sous-phase 3.3.
+ * compteur local, jamais un aléa. Toujours créé vide à la naissance puis alimenté par
+ * les systèmes d'expérience.
  */
 export interface CognitiveKnowledgeComponent {
   nextBeliefId: BeliefId;
