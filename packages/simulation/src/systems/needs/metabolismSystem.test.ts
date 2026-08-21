@@ -134,6 +134,8 @@ describe('MetabolismSystem', () => {
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
       resourceConceptId: null,
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
       untilTick: -1,
       mealMaxGain: 1,
       poisoningUntilTick: simulation.clock.currentTick + 7200,

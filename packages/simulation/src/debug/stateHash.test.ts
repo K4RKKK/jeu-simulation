@@ -115,6 +115,23 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
     simulation.dispose();
   });
 
+  it('changes when the learning watermark changes', () => {
+    const simulation = new Simulation({
+      seed: 'hash-learning-watermark',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    const [human] = simulation.humanIds();
+    if (human === undefined) throw new Error('aucun humain');
+    const before = hashWorldState(simulation);
+
+    const memory = simulation.entities.getComponentOrThrow(human, CognitiveMemory);
+    memory.lastProcessedExperienceId = 42;
+
+    expect(hashWorldState(simulation)).not.toBe(before);
+    simulation.dispose();
+  });
+
   it('change quand seul encodedConfidence01 change', () => {
     const simulation = new Simulation({
       seed: 'hash-encoded-confidence',

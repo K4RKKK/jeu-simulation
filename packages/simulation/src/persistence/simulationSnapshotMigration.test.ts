@@ -6,6 +6,7 @@ import {
   migrateSnapshotV10ToV11,
   migrateSnapshotV11ToV12,
   migrateSnapshotV12ToV13,
+  migrateSnapshotV13ToV14,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -58,7 +59,13 @@ describe('migrateSnapshotV9ToV10', () => {
     const cognitions = byId('HumanCognition');
 
     for (const id of humanIds) {
-      expect(memories.get(id)).toEqual({ nextMemoryId: 0, spatial: [], episodic: [], social: [] });
+      expect(memories.get(id)).toEqual({
+        nextMemoryId: 0,
+        spatial: [],
+        episodic: [],
+        lastProcessedExperienceId: null,
+        social: [],
+      });
       expect(knowledges.get(id)).toEqual({ nextBeliefId: 0, beliefs: [] });
       expect(cognitions.get(id)).toEqual({ activeGoalId: null, decisionReason: null });
     }
@@ -99,6 +106,7 @@ describe('migrateSnapshotV9ToV10', () => {
         nextMemoryId: 0,
         spatial: [],
         episodic: [],
+        lastProcessedExperienceId: null,
         social: [],
       });
       expect(target.entities.getComponentOrThrow(id, CognitiveKnowledge)).toEqual({
@@ -476,5 +484,78 @@ describe('migrateSnapshotV12ToV13', () => {
     const migrated = migrateSnapshotV12ToV13(v12);
     expect(migrated.version).toBe(13);
     expect(v12.version).toBe(12);
+  });
+});
+
+describe('migrateSnapshotV13ToV14', () => {
+  it('marks historical episodes consolidated and converts edible into illness risk', () => {
+    const simulation = makeSimulation('migration-v13-v14');
+    const snapshot = simulation.captureSnapshot();
+    simulation.dispose();
+    const [human] = snapshot.entities.ids;
+    if (human === undefined) throw new Error('aucun humain');
+    const v13: SimulationSnapshot = {
+      ...snapshot,
+      version: 13,
+      entities: {
+        ...snapshot.entities,
+        components: {
+          ...snapshot.entities.components,
+          CognitiveMemory: [
+            [
+              human,
+              {
+                nextMemoryId: 3,
+                spatial: [],
+                episodic: [{ id: 2 }],
+                social: [],
+              },
+            ],
+          ],
+          CognitiveKnowledge: [
+            [
+              human,
+              {
+                nextBeliefId: 1,
+                beliefs: [
+                  {
+                    id: 0,
+                    subjectConcept: 'mushroom:unknown',
+                    property: 'food.edible',
+                    value: { kind: 'probability', value01: 0.8 },
+                    confidence01: 0.7,
+                    evidenceCount: 2,
+                    lastUpdatedTick: 12,
+                  },
+                ],
+              },
+            ],
+          ],
+        },
+      },
+    };
+
+    const migrated = migrateSnapshotV13ToV14(v13);
+    expect(migrated.version).toBe(14);
+    const memory = (migrated.entities.components.CognitiveMemory ?? [])[0]?.[1] as {
+      lastProcessedExperienceId: number | null;
+    };
+    const belief = (
+      (migrated.entities.components.CognitiveKnowledge ?? [])[0]?.[1] as {
+        beliefs: { property: string; value: { value01: number } }[];
+      }
+    ).beliefs[0];
+    expect(memory.lastProcessedExperienceId).toBe(2);
+    if (belief === undefined) throw new Error('croyance migrée absente');
+    expect(belief.property).toBe('food.illnessRisk');
+    expect(belief.value.value01).toBeCloseTo(0.2);
+    expect(v13.version).toBe(13);
+    expect(
+      (
+        (v13.entities.components.CognitiveKnowledge ?? [])[0]?.[1] as {
+          beliefs: { property: string }[];
+        }
+      ).beliefs[0]?.property,
+    ).toBe('food.edible');
   });
 });

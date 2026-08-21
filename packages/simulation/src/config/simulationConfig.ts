@@ -285,6 +285,8 @@ export interface PerceptionConfig {
  * réinitialise `lastSeenTick`) ; un souvenir ancien s'estompe puis se purge.
  */
 export interface CognitionConfig {
+  /** Gain de faim perceptible à partir duquel une ingestion est jugée nourrissante. */
+  nourishingHungerGainThreshold01: number;
   /** Confiance attribuée à un souvenir spatial au moment où il est perçu. */
   freshSpatialConfidence01: number;
   /** Imprécision (mètres) attribuée à un souvenir spatial fraîchement perçu. */
@@ -520,6 +522,7 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     maxWaterEntries: 4,
   },
   cognition: {
+    nourishingHungerGainThreshold01: 0.01,
     freshSpatialConfidence01: 1,
     freshSpatialPrecisionM: 1,
     // 30 min de jeu pour tomber à confiance moitié sans être revu ; à ce rythme, un

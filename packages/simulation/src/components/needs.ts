@@ -44,6 +44,8 @@ export interface NeedsStateComponent {
   /** Adresse locale de la ressource dans son chunk propriétaire (recopiée depuis la mémoire). */
   resourceLocalId: number | null;
   resourceConceptId: string | null;
+  mealStartedTick: number;
+  mealHungerBefore01: number;
   untilTick: number;
   /**
    * Gain de faim restant que ce repas peut encore fournir, dans [0, 1] — dérivé de

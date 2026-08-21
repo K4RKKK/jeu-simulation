@@ -1,78 +1,55 @@
-import { allocateBeliefId } from '../components/cognitiveKnowledge.js';
 import type { CognitiveKnowledgeComponent } from '../components/cognitiveKnowledge.js';
+import { applyProbabilityEvidence } from './beliefEvidenceModel.js';
 import type { ConceptId } from './ids.js';
 
-/** Propriété stable produite uniquement par les expériences d'ingestion. */
+export const FOOD_NOURISHING_PROPERTY = 'food.nourishing';
+export const FOOD_ILLNESS_RISK_PROPERTY = 'food.illnessRisk';
 export const FOOD_EDIBLE_PROPERTY = 'food.edible';
 
-/**
- * Probabilité apprise qu'un concept visuel soit comestible. `null` signifie qu'aucune
- * expérience personnelle ne permet encore de distinguer cette apparence.
- */
-export function learnedEdibility01(
+export function learnedFoodProbability01(
   knowledge: CognitiveKnowledgeComponent,
   conceptId: ConceptId | undefined,
+  property: typeof FOOD_NOURISHING_PROPERTY | typeof FOOD_ILLNESS_RISK_PROPERTY,
 ): number | null {
-  if (conceptId === undefined) return null;
+  if (!conceptId) return null;
   const belief = knowledge.beliefs.find(
-    (candidate) =>
-      candidate.subjectConcept === conceptId && candidate.property === FOOD_EDIBLE_PROPERTY,
+    (candidate) => candidate.subjectConcept === conceptId && candidate.property === property,
   );
   return belief?.value.kind === 'probability' ? belief.value.value01 : null;
 }
 
-/** Rend une croyance peu assurée vers l'a priori neutre de 0,5. */
-export function effectiveEdibility01(
+export function effectiveFoodProbability01(
   knowledge: CognitiveKnowledgeComponent,
   conceptId: ConceptId | undefined,
+  property: typeof FOOD_NOURISHING_PROPERTY | typeof FOOD_ILLNESS_RISK_PROPERTY,
 ): number | null {
-  if (conceptId === undefined) return null;
+  if (!conceptId) return null;
   const belief = knowledge.beliefs.find(
-    (candidate) =>
-      candidate.subjectConcept === conceptId && candidate.property === FOOD_EDIBLE_PROPERTY,
+    (candidate) => candidate.subjectConcept === conceptId && candidate.property === property,
   );
   if (belief?.value.kind !== 'probability') return null;
   return 0.5 + belief.confidence01 * (belief.value.value01 - 0.5);
 }
 
-/**
- * Consolide une ingestion vécue. La moyenne empirique garde le modèle interprétable :
- * chaque repas sain ajoute 1, chaque empoisonnement ajoute 0, sans révéler la toxicité
- * réelle du monde.
- */
-export function learnFoodEdibility(
+export function applyFoodIngestionEvidence(
   knowledge: CognitiveKnowledgeComponent,
   conceptId: ConceptId,
-  wasEdible: boolean,
+  nourishingObserved: boolean,
+  illnessObserved: boolean,
   tick: number,
 ): void {
-  const sample = wasEdible ? 1 : 0;
-  const existing = knowledge.beliefs.find(
-    (candidate) =>
-      candidate.subjectConcept === conceptId && candidate.property === FOOD_EDIBLE_PROPERTY,
-  );
-
-  if (existing === undefined) {
-    knowledge.beliefs.push({
-      id: allocateBeliefId(knowledge),
-      subjectConcept: conceptId,
-      property: FOOD_EDIBLE_PROPERTY,
-      value: { kind: 'probability', value01: sample },
-      confidence01: 0.5,
-      evidenceCount: 1,
-      lastUpdatedTick: tick,
-    });
-    return;
-  }
-
-  const previousEvidence = existing.value.kind === 'probability' ? existing.evidenceCount : 0;
-  const previousValue = existing.value.kind === 'probability' ? existing.value.value01 : 0.5;
-  const evidenceCount = previousEvidence + 1;
-  existing.value = {
-    kind: 'probability',
-    value01: (previousValue * previousEvidence + sample) / evidenceCount,
-  };
-  existing.confidence01 = 1 - 1 / (evidenceCount + 1);
-  existing.evidenceCount = evidenceCount;
-  existing.lastUpdatedTick = tick;
+  applyProbabilityEvidence(knowledge, {
+    subjectConcept: conceptId,
+    property: FOOD_NOURISHING_PROPERTY,
+    observedValue01: nourishingObserved ? 1 : 0,
+    tick,
+    source: 'selfExperience',
+  });
+  applyProbabilityEvidence(knowledge, {
+    subjectConcept: conceptId,
+    property: FOOD_ILLNESS_RISK_PROPERTY,
+    observedValue01: illnessObserved ? 1 : 0,
+    tick,
+    source: 'selfExperience',
+  });
 }

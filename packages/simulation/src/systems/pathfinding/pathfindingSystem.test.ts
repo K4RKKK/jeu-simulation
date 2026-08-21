@@ -138,6 +138,8 @@ describe('PathfindingSystem', () => {
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
       resourceConceptId: null,
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
       untilTick: -1,
       mealMaxGain: 1,
       poisoningUntilTick: -1,

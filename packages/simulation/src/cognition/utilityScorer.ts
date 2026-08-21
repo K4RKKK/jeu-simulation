@@ -39,25 +39,33 @@ export function scoreEat(
   needs: NeedsComponent,
   hasKnownFood: boolean,
   recentPoisonings: number,
-  learnedEdibility01: number | null,
+  nourishing01: number | null,
+  illnessRisk01: number | null,
+  caution01: number,
   criticalThreshold: number,
   config: DecisionConfig,
 ): DecisionOption {
   const need = urgency(needs.hunger, criticalThreshold, config.epsilon);
   const memory = hasKnownFood ? 1 : config.noMemoryPenalty;
   const poisonPenalty = Math.max(0.1, 1 / (1 + recentPoisonings));
-  const learnedSafety = learnedEdibility01 === null ? 1 : Math.max(0.1, learnedEdibility01);
+  // Les croyances modulent une base neutre : l'inconnu reste expérimentable.
+  const nourishment = nourishing01 === null ? 1 : 0.75 + 0.5 * nourishing01;
+  const safety = illnessRisk01 === null ? 1 : Math.max(0.1, 1 - illnessRisk01 * (0.5 + caution01));
   return {
     kind: 'eat',
-    score: config.eatWeight * need * memory * poisonPenalty * learnedSafety,
+    score: config.eatWeight * need * memory * poisonPenalty * nourishment * safety,
     factors: [
       { code: 'need.hunger.level', value: needs.hunger },
       { code: 'need.hunger.threshold', value: criticalThreshold },
       { code: 'memory.food.known', value: hasKnownFood ? 1 : 0 },
-      { code: 'memory.poisoning.recent_count', value: recentPoisonings },
-      ...(learnedEdibility01 === null
+      // Short-term trauma is distinct from the durable illness-risk belief.
+      { code: 'memory.poisoning.trauma_recent_count', value: recentPoisonings },
+      ...(nourishing01 === null
         ? []
-        : [{ code: 'belief.food.edible.effective_probability', value: learnedEdibility01 }]),
+        : [{ code: 'belief.food.nourishing.effective_probability', value: nourishing01 }]),
+      ...(illnessRisk01 === null
+        ? []
+        : [{ code: 'belief.food.illnessRisk.effective_probability', value: illnessRisk01 }]),
     ],
   };
 }
