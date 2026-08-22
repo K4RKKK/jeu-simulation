@@ -11,7 +11,6 @@ import {
   Memory,
   Movement,
   Needs,
-  NeedsState,
   ObservableAction,
   Personality,
   Transform,

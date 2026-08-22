@@ -97,7 +97,14 @@ export class PlannerSystem implements SimulationSystem {
             transform.z,
             ctx.tick,
             ctx.config.time.gameSecondsPerTick,
-            ctx.config.cognition.experimentation,
+            // Compose l'unique config attendue par ExperimentModel : les paramètres
+            // spécifiques à l'expérimentation vivent dans cognition.experimentation,
+            // le poids d'imitation dans cognition.socialObservation (P2 review :
+            // un seul emplacement pour socialObservation, pas de duplication).
+            {
+              ...ctx.config.cognition.experimentation,
+              socialImitationWeight: ctx.config.cognition.socialObservation.imitationWeight,
+            },
             (entry) => this.notFailedTarget(entry, failure),
           );
           if (

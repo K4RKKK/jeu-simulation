@@ -23,7 +23,12 @@ const personality: PersonalityComponent = {
   courage: 0.5,
   perseverance: 0.5,
 };
-const config = { minimumInterest01: 0.1, recentRepeatSeconds: 600, distanceScaleMeters: 32 };
+const config = {
+  minimumInterest01: 0.1,
+  recentRepeatSeconds: 600,
+  distanceScaleMeters: 32,
+  socialImitationWeight: 0,
+};
 
 function food(): SpatialMemoryEntry {
   return {
@@ -135,5 +140,110 @@ describe('food experimentation model', () => {
     expect(recentExperimentPenalty01(memory, 'berry:red', 100, 1, 600)).toBe(0);
     expect(recentExperimentPenalty01(memory, 'berry:red', 400, 1, 600)).toBe(0.5);
     expect(recentExperimentPenalty01(memory, 'mushroom:brown', 100, 1, 600)).toBe(1);
+  });
+
+  describe('Phase 3.8 — social imitation support', () => {
+    it('adds social.imitationSupport as a DecisionFactor (0 quand rien vu)', () => {
+      const knowledge = createEmptyCognitiveKnowledge();
+      const candidate = buildFoodExperimentCandidate(
+        food(),
+        createEmptyCognitiveMemory(),
+        knowledge,
+        personality,
+        0,
+        0,
+        0,
+        1,
+        config,
+      )!;
+      expect(candidate.factors).toContainEqual({
+        code: 'social.imitationSupport',
+        value: 0,
+        conceptId: 'berry:red',
+      });
+    });
+
+    it("SOCIAL SUPPORT : une observation sociale AUGMENTE le score, sans écraser la base", () => {
+      const memory = createEmptyCognitiveMemory();
+      const knowledge = createEmptyCognitiveKnowledge();
+      const weighted = { ...config, socialImitationWeight: 0.35 };
+      const before = buildFoodExperimentCandidate(
+        food(),
+        memory,
+        knowledge,
+        personality,
+        0,
+        0,
+        0,
+        1,
+        weighted,
+      )!;
+      // Simule 3 observations sociales consolidées.
+      knowledge.beliefs.push({
+        id: 0,
+        subjectConcept: 'berry:red',
+        property: 'food.observedIngestion',
+        value: { kind: 'probability', value01: 1 },
+        confidence01: 0.5,
+        evidenceCount: 3,
+        lastUpdatedTick: 0,
+      });
+      const after = buildFoodExperimentCandidate(
+        food(),
+        memory,
+        knowledge,
+        personality,
+        0,
+        0,
+        0,
+        1,
+        weighted,
+      )!;
+      expect(after.score01).toBeGreaterThan(before.score01);
+      // Le score reste borné : (1 + 0.35 * 1) = 1.35 max, clamp01 → jamais > 1.
+      expect(after.score01).toBeLessThanOrEqual(1);
+      // Le facteur social apparaît avec la vraie confidence, pas 0.
+      expect(after.factors).toContainEqual({
+        code: 'social.imitationSupport',
+        value: 0.5,
+        conceptId: 'berry:red',
+      });
+    });
+
+    it("KNOWN DANGER : une croyance personnelle forte de danger domine l'imitation sociale", () => {
+      const memory = createEmptyCognitiveMemory();
+      const knowledge = createEmptyCognitiveKnowledge();
+      // Personnalité prudente + risque personnel élevé et bien établi.
+      const cautious: PersonalityComponent = { ...personality, caution: 0.95, curiosity: 0.5 };
+      for (let i = 0; i < 10; i++) {
+        applyFoodIngestionEvidence(knowledge, 'berry:red', false, true, i);
+      }
+      // Support social maximal.
+      knowledge.beliefs.push({
+        id: 999,
+        subjectConcept: 'berry:red',
+        property: 'food.observedIngestion',
+        value: { kind: 'probability', value01: 1 },
+        confidence01: 0.95,
+        evidenceCount: 20,
+        lastUpdatedTick: 0,
+      });
+      const weighted = { ...config, socialImitationWeight: 0.35 };
+      const candidate = buildFoodExperimentCandidate(
+        food(),
+        memory,
+        knowledge,
+        cautious,
+        0,
+        0,
+        20,
+        1,
+        weighted,
+      )!;
+      // La base est très basse (haute confiance illnessRisk × haute caution) ;
+      // même multiplié par (1 + 0.35 * 0.95) ≈ 1.33, le score final reste bien
+      // sous minimumInterest01 = 0.1 — l'imitation n'écrase pas le savoir personnel.
+      expect(candidate.score01).toBeLessThan(0.1);
+    });
   });
 });

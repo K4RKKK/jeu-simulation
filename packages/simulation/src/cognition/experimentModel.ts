@@ -7,6 +7,7 @@ import type {
 } from '../components/index.js';
 import type { WorldRef } from './worldRef.js';
 import { FOOD_ILLNESS_RISK_PROPERTY, FOOD_NOURISHING_PROPERTY } from './foodBeliefModel.js';
+import { observedFoodIngestionConfidence01 } from './socialFoodBeliefModel.js';
 
 export type ExperimentKind = 'food.try';
 
@@ -25,6 +26,14 @@ export interface ExperimentationConfig {
   readonly minimumInterest01: number;
   readonly recentRepeatSeconds: number;
   readonly distanceScaleMeters: number;
+  /**
+   * Poids de l'imitation sociale dans le score `food.try` (Phase 3.8) : la belief
+   * `food.observedIngestion` module la base par `(1 + weight * confidence)`, jamais
+   * ne l'écrase — une croyance de danger personnelle forte, une caution élevée, ou
+   * une distance importante restent dominantes. Vient de
+   * `cognition.socialObservation.imitationWeight`.
+   */
+  readonly socialImitationWeight: number;
 }
 
 interface ProbabilityBelief {
@@ -145,8 +154,17 @@ export function buildFoodExperimentCandidate(
     gameSecondsPerTick,
     config.recentRepeatSeconds,
   );
-  const score01 = clamp01(
+  const baseScore01 = clamp01(
     uncertainty01 * personality.curiosity * accessibility01 * riskTolerance01 * repeatPenalty01,
+  );
+  // Phase 3.8 — support d'imitation : la confiance de la belief `food.observedIngestion`
+  // (0 si aucune) module la base multiplicativement, jamais ne l'écrase. Un observateur
+  // qui a personnellement été empoisonné plusieurs fois (illnessRisk élevé + caution
+  // haute) garde une base très basse, et le support social ne la remonte pas au-dessus
+  // du seuil `minimumInterest01` — vérifié par test KNOWN DANGER.
+  const imitationSupport01 = observedFoodIngestionConfidence01(knowledge, conceptId);
+  const score01 = clamp01(
+    baseScore01 * (1 + clamp01(config.socialImitationWeight) * imitationSupport01),
   );
 
   return {
@@ -169,6 +187,7 @@ export function buildFoodExperimentCandidate(
         : { code: 'knowledge.illnessRisk', value: believedRisk01, conceptId },
       { code: 'memory.confidence', value: entry.confidence01, conceptId },
       { code: 'experiment.recentPenalty', value: repeatPenalty01, conceptId },
+      { code: 'social.imitationSupport', value: imitationSupport01, conceptId },
     ],
   };
 }
