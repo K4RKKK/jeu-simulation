@@ -1,6 +1,6 @@
 import { NavGrid, PathFindingService, type TileCoord } from '@civ/pathfinding';
 import type { EntityId } from '@civ/shared';
-import { Activity, Movement, NeedsState, Transform } from '../../components/index.js';
+import { Activity, HumanPlan, Movement, NeedsState, Transform } from '../../components/index.js';
 import type { ActivityComponent, MovementComponent } from '../../components/index.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
 import { distance2D } from '../../core/math.js';
@@ -174,6 +174,21 @@ export class PathfindingSystem implements SimulationSystem {
     const needsState = ctx.entities.getComponent(entity, NeedsState);
     if (needsState && (needsState.action === 'seekWater' || needsState.action === 'seekFood')) {
       needsState.pathFailedAtTick = ctx.tick + ctx.config.pathfinding.failureRetryTicks;
+    }
+    const planState = ctx.entities.getComponent(entity, HumanPlan);
+    const plan = planState?.activePlan;
+    if (
+      plan &&
+      (plan.steps[plan.currentStepIndex]?.kind === 'move.to_water' ||
+        plan.steps[plan.currentStepIndex]?.kind === 'move.to_resource')
+    ) {
+      const failure = {
+        stepIndex: plan.currentStepIndex,
+        reason: 'target.unreachable' as const,
+        tick: ctx.tick,
+      };
+      plan.lastFailure = failure;
+      planState.lastFailure = failure;
     }
   }
 }

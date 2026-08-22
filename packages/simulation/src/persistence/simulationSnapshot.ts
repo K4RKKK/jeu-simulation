@@ -5,6 +5,7 @@ import {
   CognitiveMemory,
   Human,
   HumanCognition,
+  HumanPlan,
   InteractiveResource,
   Memory,
   Movement,
@@ -15,6 +16,7 @@ import {
   createEmptyCognitiveKnowledge,
   createEmptyCognitiveMemory,
   createEmptyHumanCognition,
+  createEmptyHumanPlan,
 } from '../components/index.js';
 import type { SimulationClockState } from '../core/clock.js';
 import type { ComponentType } from '../core/componentType.js';
@@ -100,7 +102,7 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // v14 : Phase 3.3 - ingestion experiences are consolidated separately by LearningSystem.
 // The persisted watermark prevents loading a save from learning the same episode twice.
 // Legacy food.edible probabilities migrate to inverse food.illnessRisk probabilities.
-export const SIMULATION_SNAPSHOT_VERSION = 15;
+export const SIMULATION_SNAPSHOT_VERSION = 16;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -209,6 +211,7 @@ export const PERSISTED_COMPONENTS: readonly ComponentType<unknown>[] = [
   CognitiveMemory,
   CognitiveKnowledge,
   HumanCognition,
+  HumanPlan,
 ];
 
 /**
@@ -541,6 +544,24 @@ export function migrateSnapshotV14ToV15(snapshot: SimulationSnapshot): Simulatio
           const { activeGoalId: _legacyGoalId, ...rest } = cognition;
           return [id, { ...rest, activeGoal: null }];
         }),
+      },
+    },
+  };
+}
+
+/** v15 -> v16 : active short-term plans become persisted working memory. */
+export function migrateSnapshotV15ToV16(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 15) {
+    throw new Error(`migrateSnapshotV15ToV16: version ${snapshot.version} inattendue (15 requis)`);
+  }
+  return {
+    ...snapshot,
+    version: 16,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        HumanPlan: snapshot.entities.ids.map((id) => [id, createEmptyHumanPlan()]),
       },
     },
   };

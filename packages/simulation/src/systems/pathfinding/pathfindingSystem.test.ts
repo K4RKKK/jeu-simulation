@@ -4,6 +4,8 @@ import { Activity, Movement, NeedsState, Transform } from '../../components/inde
 import { Simulation } from '../../simulation.js';
 import { MovementSystem } from '../movementSystem.js';
 import { NeedSatisfactionSystem } from '../needs/needSatisfactionSystem.js';
+import { PlannerSystem } from '../cognition/plannerSystem.js';
+import { GoalSelectionSystem } from '../cognition/goalSelectionSystem.js';
 import { MetabolismSystem } from '../needs/metabolismSystem.js';
 import { PathfindingSystem } from './pathfindingSystem.js';
 import { createTerrainCostMemo, terrainTileCostProvider } from './terrainCostProvider.js';
@@ -15,6 +17,8 @@ function makeSimulation(seed: string): Simulation {
     config: { time: { gameSecondsPerTick: 1 } },
     systems: [
       new MetabolismSystem(),
+      new GoalSelectionSystem(),
+      new PlannerSystem(),
       new NeedSatisfactionSystem(),
       new PathfindingSystem(),
       new MovementSystem(),

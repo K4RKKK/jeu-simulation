@@ -1,23 +1,20 @@
 import {
   Activity,
-  CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
+  HumanPlan,
   Movement,
   Needs,
   NeedsState,
-  Personality,
   Transform,
 } from '../../components/index.js';
 import type {
   ActivityComponent,
-  CognitiveKnowledgeComponent,
   CognitiveMemoryComponent,
-  HumanCognitionComponent,
+  HumanPlanComponent,
   MovementComponent,
   NeedsComponent,
   NeedsStateComponent,
-  PersonalityComponent,
   TransformComponent,
 } from '../../components/index.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
@@ -30,12 +27,6 @@ import {
   harvestInteractiveResource,
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
-import {
-  effectiveFoodProbability01,
-  FOOD_ILLNESS_RISK_PROPERTY,
-  FOOD_NOURISHING_PROPERTY,
-} from '../../cognition/foodBeliefModel.js';
-import { nearestKnownFood, nearestKnownWater } from '../../cognition/spatialMemoryQuery.js';
 import { goalForNeedsAction } from '../../cognition/goalModel.js';
 
 /**
@@ -64,17 +55,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   update(ctx: SystemUpdateContext): void {
     ctx.entities.each(
-      [
-        Needs,
-        Activity,
-        Movement,
-        Transform,
-        CognitiveMemory,
-        CognitiveKnowledge,
-        HumanCognition,
-        Personality,
-      ],
-      (entity, needs, activity, movement, transform, memory, knowledge, cognition, personality) => {
+      [Needs, Activity, Movement, Transform, CognitiveMemory, HumanCognition, HumanPlan],
+      (entity, needs, activity, movement, transform, memory, cognition, planState) => {
         // Le plan n'existe que pour les besoins critiques : on le crée au premier passage.
         const state =
           ctx.entities.getComponent(entity, NeedsState) ??
@@ -97,19 +79,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           });
 
         if (state.action === 'none') {
-          this.executeGoal(
-            ctx,
-            entity,
-            needs,
-            state,
-            activity,
-            movement,
-            transform,
-            memory,
-            knowledge,
-            cognition,
-            personality,
-          );
+          this.executeGoal(ctx, entity, needs, state, activity, movement, planState);
           return;
         }
 
@@ -123,7 +93,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           }
           // En route : le MovementSystem s'occupe du reste.
           if (movement.targetX !== null || movement.targetZ !== null) return;
-          this.onArrival(ctx, entity, needs, state, activity, transform);
+          this.completeTravelStep(planState);
+          this.onArrival(ctx, entity, needs, state, activity, transform, planState);
           return;
         }
 
@@ -135,7 +106,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         const rested =
           state.action === 'rest' && needs.energy >= ctx.config.needs.energy.restTarget;
         if (fulfilled || replete || rested || ctx.tick >= state.untilTick) {
-          this.finishAction(ctx, entity, needs, state, activity, transform, memory);
+          this.finishAction(ctx, entity, needs, state, activity, transform, memory, planState);
         }
       },
     );
@@ -148,15 +119,18 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state: NeedsStateComponent,
     activity: ActivityComponent,
     movement: MovementComponent,
-    transform: TransformComponent,
-    memory: CognitiveMemoryComponent,
-    knowledge: CognitiveKnowledgeComponent,
-    cognition: HumanCognitionComponent,
-    personality: PersonalityComponent,
+    planState: HumanPlanComponent,
   ): void {
-    const goal = cognition.activeGoal?.kind;
-    if (goal === undefined || goal === 'explore') return;
-    if (goal === 'survive.rest') {
+    const plan = planState.activePlan;
+    const step = plan?.steps[plan.currentStepIndex];
+    if (
+      step === undefined ||
+      step.kind === 'search.water' ||
+      step.kind === 'search.food' ||
+      step.kind === 'explore'
+    )
+      return;
+    if (step.kind === 'rest') {
       this.startRest(ctx, needs, state, activity);
       return;
     }
@@ -165,21 +139,60 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     // retenue posé par le PathfindingSystem : l'errance explore, la perception mémorisera
     // d'autres cibles.
     if (ctx.tick < state.pathFailedAtTick) return;
-    if (goal === 'survive.hydrate') {
-      this.seekWater(ctx, entity, state, activity, movement, transform, memory);
+    if (step.kind === 'move.to_water') {
+      this.startTravel(
+        ctx,
+        entity,
+        state,
+        activity,
+        movement,
+        'seekWater',
+        step.rememberedX,
+        step.rememberedZ,
+        "part boire (se souvient d'une rive)",
+      );
       return;
     }
-    this.seekFood(
-      ctx,
-      entity,
-      state,
-      activity,
-      movement,
-      transform,
-      memory,
-      knowledge,
-      personality,
-    );
+    if (step.kind === 'move.to_resource') {
+      this.startTravel(
+        ctx,
+        entity,
+        state,
+        activity,
+        movement,
+        'seekFood',
+        step.rememberedX,
+        step.rememberedZ,
+        'part chercher une ressource mémorisée',
+      );
+      state.resourceId = step.worldRef.resourceId;
+      state.resourceOwnerChunkKey = step.worldRef.ownerChunkKey;
+      state.resourceLocalId = null;
+      state.resourceConceptId = step.subjectConceptId;
+    }
+  }
+
+  private completeTravelStep(planState: HumanPlanComponent): void {
+    const plan = planState.activePlan;
+    if (
+      plan !== null &&
+      (plan.steps[plan.currentStepIndex]?.kind === 'move.to_water' ||
+        plan.steps[plan.currentStepIndex]?.kind === 'move.to_resource')
+    ) {
+      plan.currentStepIndex += 1;
+    }
+  }
+
+  private recordPlanFailure(
+    planState: HumanPlanComponent,
+    reason: 'target.missing' | 'interaction.failed',
+    tick: number,
+  ): void {
+    const plan = planState.activePlan;
+    if (plan === null) return;
+    const failure = { stepIndex: plan.currentStepIndex, reason, tick } as const;
+    plan.lastFailure = failure;
+    planState.lastFailure = failure;
   }
 
   private cancelSeek(state: NeedsStateComponent, movement: MovementComponent): void {
@@ -194,73 +207,6 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     movement.targetZ = null;
   }
 
-  private seekWater(
-    ctx: SystemUpdateContext,
-    entity: EntityId,
-    state: NeedsStateComponent,
-    activity: ActivityComponent,
-    movement: MovementComponent,
-    transform: TransformComponent,
-    memory: CognitiveMemoryComponent,
-  ): void {
-    const spot = nearestKnownWater(memory.spatial, transform.x, transform.z);
-    // Sans souvenir de rive, pas de plan : l'errance explore, la perception mémorisera.
-    if (!spot) return;
-    const distance = Math.round(distance2D(transform.x, transform.z, spot.x, spot.z));
-    this.startTravel(
-      ctx,
-      entity,
-      state,
-      activity,
-      movement,
-      'seekWater',
-      spot.x,
-      spot.z,
-      `part boire (se souvient d'une rive à ${distance} m, ${describeConfidence(spot.confidence01)})`,
-    );
-  }
-
-  private seekFood(
-    ctx: SystemUpdateContext,
-    entity: EntityId,
-    state: NeedsStateComponent,
-    activity: ActivityComponent,
-    movement: MovementComponent,
-    transform: TransformComponent,
-    memory: CognitiveMemoryComponent,
-    knowledge: CognitiveKnowledgeComponent,
-    personality: PersonalityComponent,
-  ): void {
-    // La cible est choisie depuis son concept perceptif et les croyances apprises.
-    // La nutrition et la toxicité moteur restent cachées à ce stade.
-    const chosen = nearestKnownFood(
-      memory.spatial,
-      transform.x,
-      transform.z,
-      (worldRef) => ctx.world.findResourceById(worldRef.resourceId, worldRef.ownerChunkKey),
-      (resourceId) => ctx.world.delta.isDepleted(resourceId),
-      (entry) => foodPreference01(knowledge, entry.subjectConceptId, personality.caution),
-    );
-    if (!chosen) return;
-    const { entry, spawn } = chosen;
-    const distance = Math.round(distance2D(transform.x, transform.z, entry.x, entry.z));
-    this.startTravel(
-      ctx,
-      entity,
-      state,
-      activity,
-      movement,
-      'seekFood',
-      entry.x,
-      entry.z,
-      `part chercher de la nourriture (se souvient d'une ressource ${entry.subjectConceptId ?? 'familière'} à ${distance} m, ${describeConfidence(entry.confidence01)})`,
-    );
-    state.resourceId = spawn.id;
-    state.resourceOwnerChunkKey = spawn.ownerChunkKey;
-    state.resourceLocalId = spawn.localId;
-    state.resourceConceptId = entry.subjectConceptId ?? null;
-  }
-
   private onArrival(
     ctx: SystemUpdateContext,
     entity: EntityId,
@@ -268,11 +214,13 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state: NeedsStateComponent,
     activity: ActivityComponent,
     transform: TransformComponent,
+    planState: HumanPlanComponent,
   ): void {
     const targetX = state.targetX;
     const targetZ = state.targetZ;
     if (targetX === null || targetZ === null) {
       state.action = 'none';
+      this.recordPlanFailure(planState, 'interaction.failed', ctx.tick);
       return;
     }
     // Arrivé ? Le MovementSystem pose la cible exacte, mais une petite marge protège des
@@ -280,6 +228,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     const arrived = distance2D(transform.x, transform.z, targetX, targetZ) <= 2.5;
     if (!arrived) {
       state.action = 'none';
+      this.recordPlanFailure(planState, 'interaction.failed', ctx.tick);
       return;
     }
 
@@ -301,6 +250,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     // seekFood : la ressource peut avoir été cueillie par un autre entre-temps.
     if (state.resourceId && ctx.world.delta.isDepleted(state.resourceId)) {
       state.action = 'none';
+      this.recordPlanFailure(planState, 'target.missing', ctx.tick);
       return;
     }
     // La toxicité n'est pas mémorisée : elle se lit sur la ressource elle-même, au moment
@@ -320,14 +270,20 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         // Sans clé de chunk propriétaire, on ne peut plus la retrouver de façon fiable
         // (une position jitterée peut désigner un autre chunk), et sans localId on ne
         // peut pas diffuser sa modification. On abandonne le plan avant la promotion.
-        state.action = 'none';
-        return;
+        // `localId` is only world truth. Resolve it at interaction time, not planning.
+        if (state.resourceOwnerChunkKey === null) {
+          state.action = 'none';
+          this.recordPlanFailure(planState, 'target.missing', ctx.tick);
+          return;
+        }
       }
       const spawn = ctx.world.findResourceById(state.resourceId, state.resourceOwnerChunkKey);
       if (!spawn) {
         state.action = 'none';
+        this.recordPlanFailure(planState, 'target.missing', ctx.tick);
         return;
       }
+      state.resourceLocalId = spawn.localId;
       toxicity = spawn.foodToxicity01;
       harvestServings = spawn.harvestServings;
       // Chaque visite, y compris la dernière, ne vaut qu'une fraction du repas complet :
@@ -350,6 +306,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       // sa relecture et ce point. Dans ce cas, aucun repas fantôme n'est accordé.
       if (interactiveResourceEntity === null) {
         state.action = 'none';
+        this.recordPlanFailure(planState, 'target.missing', ctx.tick);
         return;
       }
     }
@@ -437,6 +394,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity: ActivityComponent,
     transform: TransformComponent,
     memory: CognitiveMemoryComponent,
+    planState: HumanPlanComponent,
   ): void {
     const done = state.action;
     if (done === 'eat' && state.resourceId !== null) {
@@ -536,6 +494,13 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           ? `repu (a mangé)`
           : `reposé (énergie ${needs.energy.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
+    const plan = planState.activePlan;
+    if (
+      plan !== null &&
+      plan.steps[plan.currentStepIndex]?.kind === (done === 'eat' ? 'eat.resource' : done)
+    ) {
+      plan.currentStepIndex += 1;
+    }
   }
 
   private startTravel(
@@ -578,20 +543,3 @@ export class NeedSatisfactionSystem implements SimulationSystem {
  * règle 12). Les seuils suivent la même logique que le score de `spatialMemoryQuery` :
  * une confiance haute est un souvenir « net », basse un souvenir « flou ».
  */
-function describeConfidence(confidence01: number): string {
-  if (confidence01 >= 0.75) return 'souvenir net';
-  if (confidence01 >= 0.4) return 'souvenir un peu flou';
-  return 'souvenir très flou';
-}
-
-function foodPreference01(
-  knowledge: CognitiveKnowledgeComponent,
-  conceptId: string | undefined,
-  caution01: number,
-): number {
-  const nourishing = effectiveFoodProbability01(knowledge, conceptId, FOOD_NOURISHING_PROPERTY);
-  const illnessRisk = effectiveFoodProbability01(knowledge, conceptId, FOOD_ILLNESS_RISK_PROPERTY);
-  const nourishment = nourishing === null ? 1 : 0.75 + 0.5 * nourishing;
-  const safety = illnessRisk === null ? 1 : Math.max(0.1, 1 - illnessRisk * (0.5 + caution01));
-  return nourishment * safety;
-}

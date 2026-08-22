@@ -6,6 +6,7 @@ import {
   CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
+  HumanPlan,
   Movement,
   Needs,
   NeedsState,
@@ -22,6 +23,7 @@ import { PathfindingSystem } from '../pathfinding/pathfindingSystem.js';
 import { terrainTileCostProvider } from '../pathfinding/terrainCostProvider.js';
 import { TemporaryWanderSystem } from '../temporary/temporaryWanderSystem.js';
 import { GoalSelectionSystem } from '../cognition/goalSelectionSystem.js';
+import { PlannerSystem } from '../cognition/plannerSystem.js';
 import { MetabolismSystem } from './metabolismSystem.js';
 import { NeedSatisfactionSystem } from './needSatisfactionSystem.js';
 
@@ -39,6 +41,7 @@ function needsSystems(): Simulation {
     systems: [
       new MetabolismSystem(),
       new GoalSelectionSystem(),
+      new PlannerSystem(),
       new NeedSatisfactionSystem(),
       new PathfindingSystem(),
       new MovementSystem(),
@@ -383,6 +386,68 @@ describe('NeedSatisfactionSystem', () => {
     simulation.dispose();
   });
 
+  it('discovers a missing planned food target on arrival and replans a search', () => {
+    const simulation = needsSystems();
+    simulation.start();
+    const entity = simulation.humanIds()[0]!;
+    const transform = simulation.entities.getComponentOrThrow(entity, Transform);
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
+    const plan = simulation.entities.getComponentOrThrow(entity, HumanPlan);
+
+    setNeeds(simulation, { hydration: 1, hunger: 0.05, energy: 1 });
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'seekFood',
+      targetX: transform.x,
+      targetZ: transform.z,
+      resourceId: 'remembered:berry',
+      resourceOwnerChunkKey: '0:0',
+      resourceLocalId: null,
+      resourceConceptId: null,
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    cognition.activeGoal = {
+      kind: 'survive.nourish',
+      startedAtTick: 0,
+    };
+    plan.nextPlanId = 1;
+    plan.activePlan = {
+      id: 0,
+      goalKind: 'survive.nourish',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [
+        {
+          kind: 'move.to_resource',
+          worldRef: 'remembered:berry',
+          subjectConceptId: null,
+          rememberedX: transform.x,
+          rememberedZ: transform.z,
+        },
+        {
+          kind: 'eat.resource',
+          worldRef: 'remembered:berry',
+          subjectConceptId: null,
+        },
+      ],
+      lastFailure: null,
+    };
+
+    simulation.step(5);
+    expect(plan.activePlan?.lastFailure?.reason).toBe('target.missing');
+    expect(simulation.entities.getComponentOrThrow(entity, NeedsState).action).toBe('none');
+
+    simulation.step(5);
+    expect(plan.activePlan?.steps).toEqual([{ kind: 'search.food' }]);
+    simulation.dispose();
+  });
+
   /**
    * Bug corrigé par la récolte progressive : la seule ressource assez calorique pour ce
    * test (`hazel_bush`, `harvestServings: 4`) ne disparaît plus après une seule bouchée
@@ -535,6 +600,7 @@ describe('NeedSatisfactionSystem', () => {
       systems: [
         new MetabolismSystem(),
         new GoalSelectionSystem(),
+        new PlannerSystem(),
         new NeedSatisfactionSystem(),
         new TemporaryWanderSystem(),
         new PathfindingSystem(),

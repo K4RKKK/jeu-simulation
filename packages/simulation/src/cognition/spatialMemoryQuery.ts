@@ -28,14 +28,30 @@ export function nearestKnownWater(
 }
 
 /**
- * Best remembered resource that appears edible and still exists in the world.
- *
- * `entry.foodCandidate` is a perceptual affordance captured during observation: it means
- * the resource looks like something that may be eaten. It deliberately says nothing
- * about nutrition or toxicity. Those engine facts remain hidden until ingestion.
- * `resolveSpawn` only verifies that the remembered resource still exists and returns the
- * stable reference needed to plan the interaction.
+ * Best food-looking resource from cognition only. A remembered target may no longer
+ * exist; that fact is deliberately discovered by execution at the remembered location.
  */
+export function selectKnownFoodTarget(
+  spatial: readonly SpatialMemoryEntry[],
+  fromX: number,
+  fromZ: number,
+  preference: (entry: SpatialMemoryEntry) => number = () => 1,
+): SpatialMemoryEntry | null {
+  let best: SpatialMemoryEntry | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const entry of spatial) {
+    if (entry.kind !== 'resource' || entry.foodCandidate !== true || !entry.worldRef) continue;
+    // Learned preference ranks plausible food but never makes it impossible to try.
+    const candidateScore = score(entry, fromX, fromZ) / Math.max(0.1, preference(entry));
+    if (candidateScore < bestScore) {
+      best = entry;
+      bestScore = candidateScore;
+    }
+  }
+  return best;
+}
+
+/** @deprecated Execution-only compatibility query. Planners must use `selectKnownFoodTarget`. */
 export function nearestKnownFood<Spawn>(
   spatial: readonly SpatialMemoryEntry[],
   fromX: number,
@@ -44,14 +60,18 @@ export function nearestKnownFood<Spawn>(
   isDepleted: (resourceId: string) => boolean,
   preference: (entry: SpatialMemoryEntry, spawn: Spawn) => number = () => 1,
 ): { entry: SpatialMemoryEntry; spawn: Spawn } | null {
+  const candidates = spatial.filter(
+    (entry) =>
+      entry.kind === 'resource' &&
+      entry.foodCandidate === true &&
+      entry.worldRef !== undefined &&
+      !isDepleted(entry.worldRef.resourceId),
+  );
   let best: { entry: SpatialMemoryEntry; spawn: Spawn } | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
-  for (const entry of spatial) {
-    if (entry.kind !== 'resource' || entry.foodCandidate !== true || !entry.worldRef) continue;
-    if (isDepleted(entry.worldRef.resourceId)) continue;
-    const spawn = resolveSpawn(entry.worldRef);
-    if (!spawn) continue;
-    // Learned preference ranks plausible food but never makes it impossible to try.
+  for (const entry of candidates) {
+    const spawn = resolveSpawn(entry.worldRef!);
+    if (spawn === null) continue;
     const candidateScore = score(entry, fromX, fromZ) / Math.max(0.1, preference(entry, spawn));
     if (candidateScore < bestScore) {
       best = { entry, spawn };

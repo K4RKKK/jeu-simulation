@@ -14,6 +14,7 @@ import {
   migrateSnapshotV12ToV13,
   migrateSnapshotV13ToV14,
   migrateSnapshotV14ToV15,
+  migrateSnapshotV15ToV16,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -708,5 +709,19 @@ describe('migrateSnapshotV14ToV15', () => {
     );
     expect(target.entities.getComponentOrThrow(human, NeedsState).action).toBe('eat');
     target.dispose();
+  });
+});
+
+describe('migrateSnapshotV15ToV16', () => {
+  it('adds an empty working plan without changing a v15 action', () => {
+    const simulation = makeSimulation('migration-v15-v16');
+    const snapshot = simulation.captureSnapshot();
+    simulation.dispose();
+    const v15: SimulationSnapshot = { ...snapshot, version: 15 };
+    const migrated = migrateSnapshotV15ToV16(v15);
+    expect(migrated.version).toBe(16);
+    expect(migrated.entities.components.HumanPlan).toEqual(
+      v15.entities.ids.map((id) => [id, { nextPlanId: 0, activePlan: null, lastFailure: null }]),
+    );
   });
 });
