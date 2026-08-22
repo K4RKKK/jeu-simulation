@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CognitiveKnowledge, CognitiveMemory, HumanCognition } from '../components/index.js';
+import {
+  CognitiveKnowledge,
+  CognitiveMemory,
+  HumanCognition,
+  Needs,
+  NeedsState,
+} from '../components/index.js';
 import { Simulation } from '../simulation.js';
 import {
   migrateSnapshotV9ToV10,
@@ -7,6 +13,7 @@ import {
   migrateSnapshotV11ToV12,
   migrateSnapshotV12ToV13,
   migrateSnapshotV13ToV14,
+  migrateSnapshotV14ToV15,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -40,6 +47,32 @@ function asV9Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): Sim
   };
 }
 
+/** Builds a v14-shaped save with the exact pre-goal configuration fingerprint. */
+function asV14Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): SimulationSnapshot {
+  const preGoalFingerprint = (
+    simulation as unknown as { preGoalConfigFingerprint(): string }
+  ).preGoalConfigFingerprint();
+  const cognitions = (snapshot.entities.components.HumanCognition ?? []) as unknown as [
+    number,
+    { decisionReason: unknown },
+  ][];
+  return {
+    ...snapshot,
+    version: 14,
+    configFingerprint: preGoalFingerprint,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        HumanCognition: cognitions.map(([id, cognition]) => [
+          id,
+          { activeGoalId: null, decisionReason: cognition.decisionReason },
+        ]),
+      },
+    },
+  };
+}
+
 describe('migrateSnapshotV9ToV10', () => {
   it('ajoute les trois composants cognitifs, vides, pour chaque humain existant', () => {
     const simulation = makeSimulation('migration-v9-v10');
@@ -67,7 +100,7 @@ describe('migrateSnapshotV9ToV10', () => {
         social: [],
       });
       expect(knowledges.get(id)).toEqual({ nextBeliefId: 0, beliefs: [] });
-      expect(cognitions.get(id)).toEqual({ activeGoalId: null, decisionReason: null });
+      expect(cognitions.get(id)).toEqual({ activeGoal: null, decisionReason: null });
     }
   });
 
@@ -114,7 +147,7 @@ describe('migrateSnapshotV9ToV10', () => {
         beliefs: [],
       });
       expect(target.entities.getComponentOrThrow(id, HumanCognition)).toEqual({
-        activeGoalId: null,
+        activeGoal: null,
         decisionReason: null,
       });
     }
@@ -571,5 +604,109 @@ describe('migrateSnapshotV13ToV14', () => {
         }
       ).beliefs[0]?.property,
     ).toBe('food.edible');
+  });
+});
+
+describe('migrateSnapshotV14ToV15', () => {
+  it('replaces the opaque legacy goal with no fabricated intention', () => {
+    const simulation = makeSimulation('migration-v14-v15');
+    const snapshot = simulation.captureSnapshot();
+    simulation.dispose();
+    const v14: SimulationSnapshot = {
+      ...snapshot,
+      version: 14,
+      entities: {
+        ...snapshot.entities,
+        components: {
+          ...snapshot.entities.components,
+          HumanCognition: snapshot.entities.ids.map((id) => [
+            id,
+            { activeGoalId: 'goal:reduceHunger', decisionReason: null },
+          ]),
+        },
+      },
+    };
+
+    const migrated = migrateSnapshotV14ToV15(v14);
+    expect(migrated.version).toBe(15);
+    expect((migrated.entities.components.HumanCognition ?? [])[0]?.[1]).toEqual({
+      activeGoal: null,
+      decisionReason: null,
+    });
+    expect(v14.version).toBe(14);
+  });
+
+  it('restores a genuine v14 fingerprint while keeping retired decision settings meaningful', () => {
+    const config = {
+      time: { gameSecondsPerTick: 1 },
+      needs: { decision: { noMemoryPenalty: 0.23, recentPoisoningWindowSeconds: 777 } },
+    };
+    const source = new Simulation({ seed: 'migration-v14-fingerprint', population: 1, config });
+    const v14 = asV14Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = new Simulation({ seed: 'migration-v14-fingerprint', population: 1, config });
+    expect(() => target.restoreSnapshot(v14)).not.toThrow();
+    target.dispose();
+  });
+
+  it('rejects a genuine v14 snapshot when a retired decision setting drifted', () => {
+    const source = new Simulation({
+      seed: 'migration-v14-fingerprint-drift',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        needs: { decision: { noMemoryPenalty: 0.23, recentPoisoningWindowSeconds: 777 } },
+      },
+    });
+    const v14 = asV14Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = new Simulation({
+      seed: 'migration-v14-fingerprint-drift',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        needs: { decision: { noMemoryPenalty: 0.24, recentPoisoningWindowSeconds: 777 } },
+      },
+    });
+    expect(() => target.restoreSnapshot(v14)).toThrow('configuration incompatible');
+    target.dispose();
+  });
+
+  it('reconstructs an active nourishment goal for a v14 meal already in progress', () => {
+    const source = makeSimulation('migration-v14-mid-meal');
+    const human = source.humanIds()[0]!;
+    source.entities.getComponentOrThrow(human, Needs).hunger = 0.1;
+    source.entities.addComponent(human, NeedsState, {
+      action: 'eat',
+      targetX: null,
+      targetZ: null,
+      resourceId: 'food:legacy',
+      resourceOwnerChunkKey: '0:0',
+      resourceLocalId: 0,
+      resourceConceptId: 'food:legacy',
+      mealStartedTick: 1,
+      mealHungerBefore01: 0.05,
+      untilTick: 1_000,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    const v14 = asV14Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = makeSimulation('migration-v14-mid-meal');
+    target.restoreSnapshot(v14);
+    target.start();
+    target.step(10);
+
+    expect(target.entities.getComponentOrThrow(human, HumanCognition).activeGoal?.kind).toBe(
+      'survive.nourish',
+    );
+    expect(target.entities.getComponentOrThrow(human, NeedsState).action).toBe('eat');
+    target.dispose();
   });
 });

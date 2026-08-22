@@ -100,7 +100,7 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // v14 : Phase 3.3 - ingestion experiences are consolidated separately by LearningSystem.
 // The persisted watermark prevents loading a save from learning the same episode twice.
 // Legacy food.edible probabilities migrate to inverse food.illnessRisk probabilities.
-export const SIMULATION_SNAPSHOT_VERSION = 14;
+export const SIMULATION_SNAPSHOT_VERSION = 15;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -517,6 +517,30 @@ export function migrateSnapshotV13ToV14(snapshot: SimulationSnapshot): Simulatio
             mealHungerBefore01: 0,
           },
         ]),
+      },
+    },
+  };
+}
+
+/** v14 -> v15 : activeGoal structure l'intention au lieu d'un identifiant opaque. */
+export function migrateSnapshotV14ToV15(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 14) {
+    throw new Error(`migrateSnapshotV14ToV15: version ${snapshot.version} inattendue (14 requis)`);
+  }
+  type LegacyCognition = Record<string, unknown>;
+  const components = snapshot.entities.components;
+  const cognitions = (components.HumanCognition ?? []) as unknown as [EntityId, LegacyCognition][];
+  return {
+    ...snapshot,
+    version: 15,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        HumanCognition: cognitions.map(([id, cognition]) => {
+          const { activeGoalId: _legacyGoalId, ...rest } = cognition;
+          return [id, { ...rest, activeGoal: null }];
+        }),
       },
     },
   };

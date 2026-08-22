@@ -31,7 +31,7 @@ describe('composants cognitifs (Phase 3.1)', () => {
       expect(knowledge).toEqual({ nextBeliefId: 0, beliefs: [] });
 
       const cognition = simulation.entities.getComponentOrThrow(id, HumanCognition);
-      expect(cognition).toEqual({ activeGoalId: null, decisionReason: null });
+      expect(cognition).toEqual({ activeGoal: null, decisionReason: null });
     }
     simulation.dispose();
   });

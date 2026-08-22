@@ -75,6 +75,25 @@ describe('Simulation snapshot — round-trip immédiat', () => {
     target.dispose();
   });
 
+  it('refuse un snapshot v15 dont une règle de changement de but a changé', () => {
+    const seed = 'goal-config-drift';
+    const source = new Simulation({
+      seed,
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 }, needs: { decision: { goalSwitchMargin01: 0.2 } } },
+    });
+    const snapshot = source.captureSnapshot();
+    source.dispose();
+
+    const target = new Simulation({
+      seed,
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 }, needs: { decision: { goalSwitchMargin01: 0.3 } } },
+    });
+    expect(() => target.restoreSnapshot(snapshot)).toThrow(/configuration incompatible/);
+    target.dispose();
+  });
+
   /**
    * À l'inverse, une différence de config `humans` (génération de la population
    * initiale) ne doit PAS bloquer un chargement légitime : cette config n'a plus
