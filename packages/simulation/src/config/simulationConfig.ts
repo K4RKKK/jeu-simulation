@@ -303,6 +303,21 @@ export interface CognitionConfig {
     /** Échelle spatiale utilisée pour l'accessibilité d'un souvenir expérimental. */
     distanceScaleMeters: number;
   };
+  /**
+   * Observation sociale (Phase 3.8) — voir un autre humain agir, jamais lire son état
+   * interne. Chaque paramètre reste modeste : l'imitation ne doit pas écraser la
+   * décision de survie ni une expérience personnelle déjà vécue.
+   */
+  socialObservation: {
+    /** Gain de confiance appliqué à la belief `food.observedIngestion` par observation directe (formule multiplicative). */
+    directObservationEvidenceGain: number;
+    /** Familiarity ajoutée à SocialMemoryEntry par NOUVELLE occurrence observée (pas par tick). */
+    familiarityGainPerAction: number;
+    /** Facteur d'imitation dans ExperimentModel : score final = base × (1 + w × supportSocial). */
+    imitationWeight: number;
+    /** Nombre maximal d'entrées SocialMemory par humain (éviction protège les acteurs actuellement observés). */
+    maxSocialEntries: number;
+  };
   /** Confiance attribuée à un souvenir spatial au moment où il est perçu. */
   freshSpatialConfidence01: number;
   /** Imprécision (mètres) attribuée à un souvenir spatial fraîchement perçu. */
@@ -555,6 +570,18 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
       minimumInterest01: 0.1,
       recentRepeatSeconds: 600,
       distanceScaleMeters: 32,
+    },
+    socialObservation: {
+      // Une première observation donne ~0.25, la 4ᵉ ~0.68, la 10ᵉ ~0.94 : jamais 1.
+      directObservationEvidenceGain: 0.25,
+      // ~20 actions distinctes pour saturer familiarity — ordre de grandeur raisonnable
+      // pour deux humains qui cohabitent au même campement.
+      familiarityGainPerAction: 0.05,
+      // Modeste : ne peut pas écraser une forte croyance de danger ou la caution.
+      imitationWeight: 0.35,
+      // Suffisant pour un petit groupe ; éviction protège les acteurs actuellement
+      // observés (voir SocialObservationSystem) pour éviter de fabriquer un doublon.
+      maxSocialEntries: 32,
     },
     freshSpatialConfidence01: 1,
     freshSpatialPrecisionM: 1,

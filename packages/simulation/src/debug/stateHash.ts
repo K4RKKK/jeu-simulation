@@ -251,6 +251,12 @@ function fnv1aHashState(state: CanonicalState): string {
     if (experience.kind === 'resource.gathering') {
       return `${experience.kind}:${experience.subjectConceptId ?? 'n'}:${experience.actionTick}:${experience.outcomeTick}:${experience.completed ? 1 : 0}`;
     }
+    if (experience.kind === 'social.actionObserved') {
+      // Phase 3.8 : consommé une seule fois par LearningSystem (watermark unique).
+      // Le hash doit tenir compte de actorId + occurrence + concept + ticks — sans quoi
+      // deux mondes divergents sur ce que B a vu de A produiraient le même hash.
+      return `${experience.kind}:${experience.actorId}:${experience.observedAction}:${experience.subjectConceptId ?? 'n'}:${experience.actionStartedTick}:${experience.observationTick}:${experience.source}`;
+    }
     return `${experience.kind}:${experience.subjectConceptId}:${experience.motivation}:${experience.actionTick}:${experience.outcomeTick}:${q(experience.hungerBefore01)}:${q(experience.hungerAfter01)}:${experience.illnessObserved ? 1 : 0}`;
   };
 
@@ -402,7 +408,11 @@ function fnv1aHashState(state: CanonicalState): string {
       const social = cognitiveMemory.social
         .map(
           (entry) =>
-            `${entry.id}:${entry.humanId}:${q(entry.trust01)}:${q(entry.familiarity01)}:${entry.lastContactTick}`,
+            `${entry.id}:${entry.humanId}:${q(entry.trust01)}:${q(entry.familiarity01)}:${entry.lastContactTick}:` +
+            // Phase 3.8 — dédup d'occurrence : sans ces champs, un rechargement
+            // pourrait ré-observer la même action et fabriquer un doublon d'épisode
+            // qui deviendrait invisible côté hash.
+            `${entry.lastObservedActionKind ?? 'n'}:${entry.lastObservedActionStartedTick}:${entry.lastObservedActionConceptId ?? 'n'}`,
         )
         .join(';');
       write(

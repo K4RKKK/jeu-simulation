@@ -33,6 +33,7 @@ export type {
   EpisodicMemoryEntry,
   FoodIngestionExperience,
   LivedExperience,
+  ObservedActionExperience,
   ResourceGatheringExperience,
   SocialMemoryEntry,
   SpatialMemoryEntry,

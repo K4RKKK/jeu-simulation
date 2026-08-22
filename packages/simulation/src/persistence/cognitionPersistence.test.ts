@@ -87,6 +87,10 @@ describe('persistance des composants cognitifs', () => {
       trust01: 0.6,
       familiarity01: 0.4,
       lastContactTick: 41,
+      // Phase 3.8 : occurrence non observée dans ce test — champs neutres.
+      lastObservedActionKind: null,
+      lastObservedActionStartedTick: -1,
+      lastObservedActionConceptId: null,
     });
 
     const knowledge = simulation.entities.getComponentOrThrow(human, CognitiveKnowledge);

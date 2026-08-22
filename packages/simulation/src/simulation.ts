@@ -43,6 +43,7 @@ import { PathfindingSystem } from './systems/pathfinding/pathfindingSystem.js';
 import { PerceptionSystem } from './systems/perception/perceptionSystem.js';
 import { ResourceInteractionSystem } from './systems/resourceInteractionSystem.js';
 import { EcologySystem } from './systems/ecologySystem.js';
+import { SocialObservationSystem } from './systems/cognition/socialObservationSystem.js';
 import { TemporaryWanderSystem } from './systems/temporary/temporaryWanderSystem.js';
 import { World } from './world/world.js';
 
@@ -356,13 +357,21 @@ export class Simulation {
       snapshot.ecologyVersion !== undefined &&
       snapshot.configFingerprint === this.preSkillsConfigFingerprint() &&
       rawSnapshot.version === 17;
+    // Phase 3.8 : les sauvegardes v18 (Phase 3.7) ne peuvent pas avoir contribué à
+    // l'empreinte socialObservation qui n'existait pas encore. Empreinte historique
+    // exacte pour cette ère : cognition sans socialObservation, tout le reste inclus.
+    const matchesPreSocialObservationFingerprint =
+      snapshot.ecologyVersion !== undefined &&
+      snapshot.configFingerprint === this.preSocialObservationConfigFingerprint() &&
+      rawSnapshot.version === 18;
     if (
       snapshot.configFingerprint !== currentFingerprint &&
       !matchesLegacyFingerprint &&
       !matchesPreCognitionFingerprint &&
       !matchesPreGoalFingerprint &&
       !matchesPreExperimentationFingerprint &&
-      !matchesPreSkillsFingerprint
+      !matchesPreSkillsFingerprint &&
+      !matchesPreSocialObservationFingerprint
     ) {
       throw new Error(
         `restoreSnapshot: configuration incompatible (empreinte snapshot "${snapshot.configFingerprint}", ` +
@@ -452,6 +461,19 @@ export class Simulation {
       includeGoals: true,
       includeExperimentation: true,
       includeSkills: true,
+      includeSocialObservation: true,
+    });
+  }
+
+  /** Exact v18 formula, before cognition.socialObservation existed (Phase 3.8). */
+  private preSocialObservationConfigFingerprint(): string {
+    return this.computeBehaviorFingerprint({
+      includeEcology: true,
+      includeCognition: true,
+      includeGoals: true,
+      includeExperimentation: true,
+      includeSkills: true,
+      includeSocialObservation: false,
     });
   }
 
@@ -463,6 +485,7 @@ export class Simulation {
       includeGoals: true,
       includeExperimentation: true,
       includeSkills: false,
+      includeSocialObservation: false,
     });
   }
 
@@ -474,6 +497,7 @@ export class Simulation {
       includeGoals: true,
       includeExperimentation: false,
       includeSkills: false,
+      includeSocialObservation: false,
     });
   }
 
@@ -485,6 +509,7 @@ export class Simulation {
       includeGoals: false,
       includeExperimentation: false,
       includeSkills: false,
+      includeSocialObservation: false,
     });
   }
 
@@ -496,6 +521,7 @@ export class Simulation {
       includeGoals: false,
       includeExperimentation: false,
       includeSkills: false,
+      includeSocialObservation: false,
     });
   }
 
@@ -507,6 +533,7 @@ export class Simulation {
       includeGoals: false,
       includeExperimentation: false,
       includeSkills: false,
+      includeSocialObservation: false,
     });
   }
 
@@ -516,6 +543,7 @@ export class Simulation {
     includeGoals: boolean;
     includeExperimentation: boolean;
     includeSkills: boolean;
+    includeSocialObservation: boolean;
   }): string {
     const {
       time,
@@ -555,16 +583,21 @@ export class Simulation {
       pathfinding,
       scheduler,
     };
+    // Applique les retraits historiques successifs : sans experimentation (pré-Phase
+    // 3.6), sans socialObservation (pré-Phase 3.8). Toujours retirer avant d'inclure —
+    // un retrait suivi d'une réinclusion produirait la même empreinte que si on n'avait
+    // rien retiré, ce qui casserait la comparaison avec les vraies sauvegardes v18.
+    const historicalCognition = ((): unknown => {
+      if (!options.includeCognition) return undefined;
+      const stripped: Record<string, unknown> = { ...cognition } as unknown as Record<string, unknown>;
+      if (!options.includeExperimentation) delete stripped.experimentation;
+      if (!options.includeSocialObservation) delete stripped.socialObservation;
+      return stripped;
+    })();
     const simulation = {
       ...behavior,
       ...(options.includeEcology ? { weather, ecology } : {}),
-      ...(options.includeCognition
-        ? {
-            cognition: options.includeExperimentation
-              ? cognition
-              : (({ experimentation: _experimentation, ...legacy }) => legacy)(cognition),
-          }
-        : {}),
+      ...(historicalCognition === undefined ? {} : { cognition: historicalCognition }),
       ...(options.includeSkills ? { skills } : {}),
     };
     return computeConfigFingerprint(
@@ -599,6 +632,15 @@ export class Simulation {
  * le pathfinding rend la cible atteignable, puis on se déplace. `ForgettingSystem`
  * (Phase 3.2) fait vieillir la mémoire cognitive générique en fin de liste, en parallèle
  * — elle ne pilote encore aucune décision.
+ *
+ * Phase 3.8 : `SocialObservationSystem` s'exécute JUSTE APRÈS `NeedSatisfactionSystem`,
+ * qui écrit ou remplace `ObservableAction` à chaque transition. Ordre non trivial : si
+ * l'observation tournait avant la décision, une action très courte (expert gather ≈ 2 s)
+ * pourrait démarrer et se terminer entre deux passes sociales sans jamais être vue. La
+ * consolidation d'apprentissage (`LearningSystem`) reste avant `NeedSatisfactionSystem`
+ * pour préserver l'ordre cognitif déjà stabilisé — l'effet d'une observation sociale
+ * est donc naturellement décalé d'un cycle : voir cette phase, puis apprendre la passe
+ * suivante, puis éventuellement imiter la passe d'après.
  */
 export function defaultSystems(): SimulationSystem[] {
   return [
@@ -608,6 +650,7 @@ export function defaultSystems(): SimulationSystem[] {
     new GoalSelectionSystem(),
     new PlannerSystem(),
     new NeedSatisfactionSystem(),
+    new SocialObservationSystem(),
     new TemporaryWanderSystem(),
     new PathfindingSystem(),
     new MovementSystem(),

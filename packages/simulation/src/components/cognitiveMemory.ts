@@ -3,6 +3,7 @@ import type { ConceptId, MemoryId } from '../cognition/ids.js';
 import type { FoodIngestionMotivation } from '../cognition/foodActionIntent.js';
 import type { ObservationSource } from '../cognition/observation.js';
 import type { WorldRef } from '../cognition/worldRef.js';
+import type { ObservableActionKind } from './observableAction.js';
 import { defineComponent } from '../core/componentType.js';
 
 export type { WorldRef };
@@ -64,7 +65,10 @@ export interface EpisodicMemoryEntry {
   readonly experience?: LivedExperience;
 }
 
-export type LivedExperience = FoodIngestionExperience | ResourceGatheringExperience;
+export type LivedExperience =
+  | FoodIngestionExperience
+  | ResourceGatheringExperience
+  | ObservedActionExperience;
 
 export interface FoodIngestionExperience {
   readonly kind: 'food.ingestion';
@@ -85,13 +89,49 @@ export interface ResourceGatheringExperience {
   readonly completed: true;
 }
 
-/** Ce qu'un humain retient d'un autre humain — primitives sociales minimales (P3.4 texte). */
+/**
+ * Ce que l'observateur a directement PERÇU d'un autre humain (Phase 3.8) — jamais ce
+ * que l'acteur pensait, voulait, savait ou gagnait de son action. Le champ `source`
+ * reste `'directObservation'` : voir ce qu'un autre fait ≠ le savoir de seconde main
+ * (`socialTransmission`, Phase 3.9). `actorId` est une référence sociale technique ;
+ * la consolidation ultérieure ne doit JAMAIS l'utiliser pour lire l'état interne de
+ * l'acteur (Needs, Skills, Knowledge…), sous peine de rétablir la télépathie moteur
+ * que cette phase interdit précisément.
+ */
+export interface ObservedActionExperience {
+  readonly kind: 'social.actionObserved';
+  readonly actorId: EntityId;
+  readonly observedAction: ObservableActionKind;
+  readonly subjectConceptId: ConceptId | null;
+  readonly actionStartedTick: number;
+  readonly observationTick: number;
+  readonly source: 'directObservation';
+}
+
+/**
+ * Ce qu'un humain retient d'un autre humain — primitives sociales minimales.
+ *
+ * `trust01` : jamais modifié par la simple observation (Phase 3.8). Il faudra des
+ * résultats coopérés, des mensonges, des interactions volontaires pour qu'il évolue.
+ * `familiarity01` : monte à chaque NOUVELLE occurrence observée (§13 plan), pas à
+ * chaque tick où l'acteur reste visible. Familiarity ≠ Trust : voir souvent quelqu'un
+ * ne le rend PAS automatiquement fiable.
+ *
+ * Champs de dédup (Phase 3.8) : conservent l'identité de la dernière `ObservableAction`
+ * observée chez cet acteur — `(kind, startedAtTick, subjectConceptId)`. Une même
+ * occurrence physique (l'acteur reste en gather 8 s) ne produit qu'UN épisode chez
+ * l'observateur ; la deuxième passe met à jour `lastContactTick` sans nouvel épisode.
+ * Persistés dans le snapshot pour que le rechargement ne réécrive pas l'occurrence.
+ */
 export interface SocialMemoryEntry {
   readonly id: MemoryId;
   readonly humanId: EntityId;
   trust01: number;
   familiarity01: number;
   lastContactTick: number;
+  lastObservedActionKind: ObservableActionKind | null;
+  lastObservedActionStartedTick: number;
+  lastObservedActionConceptId: ConceptId | null;
 }
 
 /**
