@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   CognitiveMemory,
+  CognitiveKnowledge,
   HumanCognition,
   HumanPlan,
+  Personality,
+  Transform,
   type SpatialMemoryEntry,
 } from '../../components/index.js';
 import { Simulation } from '../../simulation.js';
@@ -101,7 +104,77 @@ describe('PlannerSystem', () => {
     const plan = planFor(foodSim, 'survive.nourish');
     expect(plan.steps.map((step) => step.kind)).toEqual(['move.to_resource', 'eat.resource']);
     expect(plan.steps[0]).toMatchObject({ worldRef: { resourceId: 'remembered:berry' } });
+    expect(plan.steps[1]).toMatchObject({ intent: 'satisfyNeed' });
     foodSim.dispose();
+  });
+
+  it('turns explore into a deliberate food experiment when uncertainty is interesting', () => {
+    const sim = simulation();
+    const human = sim.humanIds()[0]!;
+    const transform = sim.entities.getComponentOrThrow(human, Transform);
+    const entry = { ...rememberedFood(), x: transform.x + 2, z: transform.z };
+    sim.entities.getComponentOrThrow(human, CognitiveMemory).spatial.push(entry);
+    const personality = sim.entities.getComponentOrThrow(human, Personality);
+    personality.curiosity = 1;
+    personality.caution = 0;
+
+    const plan = planFor(sim, 'explore');
+    expect(plan.goalKind).toBe('explore');
+    expect(plan.steps).toEqual([
+      expect.objectContaining({ kind: 'move.to_resource', worldRef: entry.worldRef }),
+      expect.objectContaining({
+        kind: 'eat.resource',
+        intent: 'deliberateExperiment',
+        worldRef: entry.worldRef,
+      }),
+    ]);
+    expect(sim.entities.getComponentOrThrow(human, HumanCognition).decisionReason?.code).toBe(
+      'experiment.select.food.try',
+    );
+    sim.entities.getComponentOrThrow(human, HumanCognition).decisionReason = {
+      code: 'goal.select.explore',
+      factors: [],
+    };
+    sim.step(10);
+    expect(sim.entities.getComponentOrThrow(human, HumanCognition).decisionReason?.code).toBe(
+      'experiment.select.food.try',
+    );
+    sim.dispose();
+  });
+
+  it('keeps ordinary exploration after coherent knowledge removes information value', () => {
+    const sim = simulation();
+    const human = sim.humanIds()[0]!;
+    const transform = sim.entities.getComponentOrThrow(human, Transform);
+    sim.entities.getComponentOrThrow(human, CognitiveMemory).spatial.push({
+      ...rememberedFood(),
+      x: transform.x + 2,
+      z: transform.z,
+    });
+    const knowledge = sim.entities.getComponentOrThrow(human, CognitiveKnowledge);
+    knowledge.beliefs.push(
+      {
+        id: 0,
+        subjectConcept: 'berry:red',
+        property: 'food.nourishing',
+        value: { kind: 'probability', value01: 1 },
+        confidence01: 0.95,
+        evidenceCount: 20,
+        lastUpdatedTick: 0,
+      },
+      {
+        id: 1,
+        subjectConcept: 'berry:red',
+        property: 'food.illnessRisk',
+        value: { kind: 'probability', value01: 0 },
+        confidence01: 0.95,
+        evidenceCount: 20,
+        lastUpdatedTick: 0,
+      },
+    );
+    sim.entities.getComponentOrThrow(human, Personality).curiosity = 1;
+    expect(planFor(sim, 'explore').steps).toEqual([{ kind: 'explore' }]);
+    sim.dispose();
   });
 
   it('keeps a committed target after the matching spatial memory is forgotten', () => {

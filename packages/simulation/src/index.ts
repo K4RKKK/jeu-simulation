@@ -35,6 +35,8 @@ export * from './persistence/configFingerprint.js';
 export * from './components/index.js';
 export * from './humans/humanFactory.js';
 export * from './humans/names.js';
+export * from './cognition/experimentModel.js';
+export * from './cognition/foodActionIntent.js';
 
 /* Systèmes */
 export * from './systems/movementSystem.js';

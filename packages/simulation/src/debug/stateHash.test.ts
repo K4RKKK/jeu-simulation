@@ -150,6 +150,7 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
       resourceOwnerChunkKey: '0:0',
       resourceLocalId: 1,
       resourceConceptId: 'berry:red',
+      foodIntent: 'satisfyNeed',
       mealStartedTick: 10,
       mealHungerBefore01: 0.2,
       untilTick: 20,
@@ -249,6 +250,7 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
           kind: 'eat.resource',
           worldRef: { type: 'resource', resourceId: 'berry:1', ownerChunkKey: '0:0', localId: 1 },
           subjectConceptId: 'berry:red',
+          intent: 'satisfyNeed',
         },
       ],
       lastFailure: null,
@@ -256,6 +258,25 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
     const before = hashWorldState(simulation);
     plan.activePlan.currentStepIndex = 1;
     expect(hashWorldState(simulation)).not.toBe(before);
+
+    const beforeIntent = hashWorldState(simulation);
+    const eatStep = plan.activePlan.steps[1];
+    if (eatStep?.kind !== 'eat.resource') throw new Error('eat step expected');
+    plan.activePlan = {
+      ...plan.activePlan,
+      steps: [plan.activePlan.steps[0]!, { ...eatStep, intent: 'deliberateExperiment' }],
+    };
+    expect(hashWorldState(simulation)).not.toBe(beforeIntent);
+
+    const beforeReason = hashWorldState(simulation);
+    plan.activePlan = {
+      ...plan.activePlan,
+      selectionReason: {
+        code: 'experiment.select.food.try',
+        factors: [{ code: 'knowledge.uncertainty', value: 1, conceptId: 'berry:red' }],
+      },
+    };
+    expect(hashWorldState(simulation)).not.toBe(beforeReason);
 
     plan.activePlan.lastFailure = {
       stepIndex: 0,
@@ -277,6 +298,62 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
       },
     };
     expect(hashWorldState(simulation)).not.toBe(failedTargetHash);
+    simulation.dispose();
+  });
+
+  it('changes when only food intent or ingestion motivation changes', () => {
+    const simulation = makeSimulation('hash-experiment-intent', 1);
+    const human = simulation.humanIds()[0]!;
+    const state = simulation.entities.addComponent(human, NeedsState, {
+      action: 'eat',
+      targetX: null,
+      targetZ: null,
+      resourceId: 'berry:1',
+      resourceOwnerChunkKey: '0:0',
+      resourceLocalId: 1,
+      resourceConceptId: 'berry:red',
+      foodIntent: 'satisfyNeed',
+      mealStartedTick: 1,
+      mealHungerBefore01: 0.4,
+      untilTick: 10,
+      mealMaxGain: 0.2,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    const needHash = hashWorldState(simulation);
+    state.foodIntent = 'deliberateExperiment';
+    expect(hashWorldState(simulation)).not.toBe(needHash);
+
+    const memory = simulation.entities.getComponentOrThrow(human, CognitiveMemory);
+    memory.episodic.push({
+      id: 0,
+      tick: 2,
+      eventType: 'food.ingestion',
+      actors: [human],
+      outcome: 'physiology.satiety_increased',
+      emotionalStrength01: 0.2,
+      experience: {
+        kind: 'food.ingestion',
+        subjectConceptId: 'berry:red',
+        motivation: 'need',
+        actionTick: 1,
+        outcomeTick: 2,
+        hungerBefore01: 0.4,
+        hungerAfter01: 0.5,
+        illnessObserved: false,
+      },
+    });
+    const motivationHash = hashWorldState(simulation);
+    memory.episodic[0] = {
+      ...memory.episodic[0]!,
+      experience: {
+        ...memory.episodic[0]!.experience!,
+        motivation: 'deliberateExperiment',
+      },
+    };
+    expect(hashWorldState(simulation)).not.toBe(motivationHash);
     simulation.dispose();
   });
 

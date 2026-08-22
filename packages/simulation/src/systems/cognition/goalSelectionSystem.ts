@@ -27,8 +27,10 @@ export class GoalSelectionSystem implements SimulationSystem {
       [Needs, CognitiveMemory, CognitiveKnowledge, HumanCognition, Personality],
       (entity, needs, _memory, _knowledge, cognition, personality) => {
         const candidates = buildGoalCandidates(needs, personality, ctx.config.needs);
+        const needsState = ctx.entities.getComponent(entity, NeedsState);
         const execution = executionForNeedsAction(
-          ctx.entities.getComponent(entity, NeedsState)?.action ?? 'none',
+          needsState?.action ?? 'none',
+          needsState?.foodIntent ?? null,
         );
         // v14 snapshots did not persist a structured active goal. Reconstruct the
         // in-progress action before selecting, so an atomic meal cannot become explore.

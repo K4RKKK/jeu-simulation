@@ -134,6 +134,7 @@ describe('MetabolismSystem', () => {
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
       resourceConceptId: null,
+      foodIntent: null,
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,

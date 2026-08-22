@@ -18,6 +18,7 @@ import {
   migrateSnapshotV13ToV14,
   migrateSnapshotV14ToV15,
   migrateSnapshotV15ToV16,
+  migrateSnapshotV16ToV17,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -98,6 +99,7 @@ function legacyNeedsState(
     resourceOwnerChunkKey: null,
     resourceLocalId: null,
     resourceConceptId: null,
+    foodIntent: null,
     mealStartedTick: -1,
     mealHungerBefore01: 0,
     untilTick: 1_000,
@@ -723,6 +725,7 @@ describe('migrateSnapshotV14ToV15', () => {
       resourceOwnerChunkKey: '0:0',
       resourceLocalId: 0,
       resourceConceptId: 'food:legacy',
+      foodIntent: 'satisfyNeed',
       mealStartedTick: 1,
       mealHungerBefore01: 0.05,
       untilTick: 1_000,
@@ -845,5 +848,117 @@ describe('migrateSnapshotV15ToV16', () => {
       }
       target.dispose();
     }
+  });
+});
+
+describe('migrateSnapshotV16ToV17', () => {
+  it('defaults legacy food plans, active meals, and experiences to need', () => {
+    const simulation = makeSimulation('migration-v16-v17');
+    const snapshot = simulation.captureSnapshot();
+    const human = simulation.humanIds()[0]!;
+    const memory = simulation.entities.getComponentOrThrow(human, CognitiveMemory);
+    const v16 = {
+      ...snapshot,
+      version: 16,
+      entities: {
+        ...snapshot.entities,
+        components: {
+          ...snapshot.entities.components,
+          HumanPlan: [
+            [
+              human,
+              {
+                nextPlanId: 1,
+                activePlan: {
+                  id: 0,
+                  goalKind: 'survive.nourish',
+                  createdAtTick: 0,
+                  currentStepIndex: 0,
+                  steps: [
+                    {
+                      kind: 'eat.resource',
+                      worldRef: {
+                        type: 'resource',
+                        resourceId: 'berry:legacy',
+                        ownerChunkKey: '0:0',
+                        localId: 1,
+                      },
+                      subjectConceptId: 'berry:red',
+                    },
+                  ],
+                  lastFailure: null,
+                },
+                lastFailure: null,
+              },
+            ],
+          ],
+          CognitiveMemory: [
+            [
+              human,
+              {
+                ...memory,
+                episodic: [
+                  {
+                    id: 0,
+                    tick: 2,
+                    eventType: 'food.ingestion',
+                    actors: [human],
+                    outcome: 'physiology.satiety_increased',
+                    emotionalStrength01: 0.2,
+                    experience: {
+                      kind: 'food.ingestion',
+                      subjectConceptId: 'berry:red',
+                      actionTick: 1,
+                      outcomeTick: 2,
+                      hungerBefore01: 0.2,
+                      hungerAfter01: 0.4,
+                      illnessObserved: false,
+                    },
+                  },
+                ],
+              },
+            ],
+          ],
+          NeedsState: [
+            [
+              human,
+              {
+                action: 'eat',
+                targetX: null,
+                targetZ: null,
+                resourceId: 'berry:legacy',
+                resourceOwnerChunkKey: '0:0',
+                resourceLocalId: 1,
+                resourceConceptId: 'berry:red',
+                mealStartedTick: 1,
+                mealHungerBefore01: 0.2,
+                untilTick: 10,
+                mealMaxGain: 0.2,
+                poisoningUntilTick: -1,
+                poisoningToxicity01: 0,
+                currentMealCausedPoisoning: false,
+                pathFailedAtTick: -1,
+              },
+            ],
+          ],
+        },
+      },
+    } as unknown as SimulationSnapshot;
+
+    const migrated = migrateSnapshotV16ToV17(v16);
+    const plan = (migrated.entities.components.HumanPlan ?? [])[0]?.[1] as {
+      activePlan: { steps: { intent?: string }[] };
+    };
+    const migratedMemory = (migrated.entities.components.CognitiveMemory ?? [])[0]?.[1] as {
+      episodic: { experience: { motivation?: string } }[];
+    };
+    const state = (migrated.entities.components.NeedsState ?? [])[0]?.[1] as {
+      foodIntent?: string;
+    };
+    expect(migrated.version).toBe(17);
+    expect(plan.activePlan.steps[0]?.intent).toBe('satisfyNeed');
+    expect(migratedMemory.episodic[0]?.experience.motivation).toBe('need');
+    expect(state.foodIntent).toBe('satisfyNeed');
+    simulation.dispose();
   });
 });

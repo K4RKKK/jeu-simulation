@@ -30,6 +30,7 @@ import {
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
 import { goalForNeedsAction } from '../../cognition/goalModel.js';
+import { motivationForFoodIntent } from '../../cognition/foodActionIntent.js';
 import { invalidateSpatialWorldRef } from '../../cognition/spatialMemoryModel.js';
 
 /**
@@ -71,6 +72,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
             resourceOwnerChunkKey: null,
             resourceLocalId: null,
             resourceConceptId: null,
+            foodIntent: null,
             mealStartedTick: -1,
             mealHungerBefore01: 0,
             untilTick: -1,
@@ -93,7 +95,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           }
           if (
             cognition.activeGoal !== null &&
-            cognition.activeGoal.kind !== goalForNeedsAction(state.action)
+            cognition.activeGoal.kind !== goalForNeedsAction(state.action, state.foodIntent)
           ) {
             this.cancelSeek(state, movement);
             return;
@@ -175,6 +177,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       state.resourceOwnerChunkKey = step.worldRef.ownerChunkKey;
       state.resourceLocalId = step.worldRef.localId;
       state.resourceConceptId = step.subjectConceptId;
+      const eatStep = plan?.steps[plan.currentStepIndex + 1];
+      state.foodIntent = eatStep?.kind === 'eat.resource' ? eatStep.intent : 'satisfyNeed';
     }
   }
 
@@ -210,6 +214,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
     state.resourceConceptId = null;
+    state.foodIntent = null;
     movement.targetX = null;
     movement.targetZ = null;
   }
@@ -344,7 +349,10 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       ctx.config.needs.hunger.maxEatSeconds,
     );
     activity.kind = 'eat';
-    activity.reason = `mange pour apaiser sa faim (faim ${needs.hunger.toFixed(2)})`;
+    activity.reason =
+      state.foodIntent === 'deliberateExperiment'
+        ? 'goûte une ressource pour en découvrir les effets'
+        : `mange pour apaiser sa faim (faim ${needs.hunger.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
     // La toxicité réelle n'est révélée qu'à l'ingestion : les symptômes commencent
     // maintenant, puis la fin du repas mettra à jour une croyance sur son apparence.
@@ -405,6 +413,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
     state.resourceConceptId = null;
+    state.foodIntent = null;
     state.untilTick = this.durationEndTick(
       ctx,
       config.restTarget - needs.energy,
@@ -476,6 +485,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
                 experience: {
                   kind: 'food.ingestion' as const,
                   subjectConceptId: conceptId,
+                  motivation: motivationForFoodIntent(state.foodIntent ?? 'satisfyNeed'),
                   actionTick: state.mealStartedTick,
                   outcomeTick: ctx.tick,
                   hungerBefore01: state.mealHungerBefore01,
@@ -513,6 +523,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
     state.resourceConceptId = null;
+    state.foodIntent = null;
     state.mealStartedTick = -1;
     state.mealHungerBefore01 = 0;
     state.currentMealCausedPoisoning = false;

@@ -313,6 +313,7 @@ describe('NeedSatisfactionSystem', () => {
       resourceOwnerChunkKey: '0:0',
       resourceLocalId: 1,
       resourceConceptId: 'food:target',
+      foodIntent: 'satisfyNeed',
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,
@@ -351,6 +352,7 @@ describe('NeedSatisfactionSystem', () => {
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
       resourceConceptId: null,
+      foodIntent: null,
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,
@@ -426,6 +428,7 @@ describe('NeedSatisfactionSystem', () => {
       resourceOwnerChunkKey: '0:0',
       resourceLocalId: null,
       resourceConceptId: null,
+      foodIntent: null,
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,
@@ -467,6 +470,7 @@ describe('NeedSatisfactionSystem', () => {
             localId: 1,
           },
           subjectConceptId: null,
+          intent: 'satisfyNeed',
         },
       ],
       lastFailure: null,
@@ -528,6 +532,7 @@ describe('NeedSatisfactionSystem', () => {
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
       resourceConceptId: null,
+      foodIntent: null,
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,
@@ -573,6 +578,7 @@ describe('NeedSatisfactionSystem', () => {
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
       resourceConceptId: null,
+      foodIntent: null,
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,
@@ -619,6 +625,7 @@ describe('NeedSatisfactionSystem', () => {
     const kcalFloor = simulation.config.needs.hunger.kcalPerFullMeal * 0.5;
     const spawn = seedFoodUnderHuman(simulation, (candidate) => candidate.foodKcal >= kcalFloor);
     const entity = simulation.humanIds()[0]!;
+    simulation.entities.getComponentOrThrow(entity, Personality).curiosity = 0;
     simulation.config.needs.hunger.eatTarget = 0.3;
     // Une seule portion suffit a atteindre eatTarget : le goal se termine apres une visite.
     setNeeds(simulation, { hydration: 1, hunger: 0.2 });
@@ -626,7 +633,6 @@ describe('NeedSatisfactionSystem', () => {
     simulation.step(260); // ~4 minutes : le repas doit se terminer
     expect(simulation.world.delta.isDepleted(spawn.id)).toBe(false);
     expect(simulation.entities.getComponentOrThrow(entity, Needs).hunger).toBeGreaterThan(0.2);
-
     // Épuise directement les portions restantes (une déjà prise par la simulation
     // ci-dessus) : prouve que la DERNIÈRE portion retire bien la ressource.
     for (let i = 1; i < spawn.harvestServings; i++) {
@@ -651,6 +657,67 @@ describe('NeedSatisfactionSystem', () => {
     expect(removals[0]!.ownerChunkKey).toBe(spawn.ownerChunkKey);
     expect(simulation.world.journal.consumeRemovals()).toEqual([]);
     simulation.dispose();
+  });
+
+  it('records deliberate experiment motivation without changing the physical ingestion path', () => {
+    const simulation = needsSystems();
+    const spawn = seedFoodUnderHuman(simulation, (candidate) => candidate.foodKcal > 0);
+    const entity = simulation.humanIds()[0]!;
+    const personality = simulation.entities.getComponentOrThrow(entity, Personality);
+    personality.curiosity = 1;
+    personality.caution = 0;
+    setNeeds(simulation, { hydration: 1, hunger: 1, energy: 1 });
+
+    simulation.start();
+    simulation.step(300);
+
+    const episode = simulation.entities
+      .getComponentOrThrow(entity, CognitiveMemory)
+      .episodic.find(
+        (entry) =>
+          entry.experience?.kind === 'food.ingestion' &&
+          entry.experience.subjectConceptId === spawn.perceptualConceptId,
+      );
+    expect(episode?.experience).toMatchObject({
+      motivation: 'deliberateExperiment',
+      subjectConceptId: spawn.perceptualConceptId,
+    });
+    simulation.dispose();
+  });
+
+  it('finishes a restored experimental meal exactly once', () => {
+    const source = needsSystems();
+    seedFoodUnderHuman(source, (candidate) => candidate.foodKcal > 0);
+    const human = source.humanIds()[0]!;
+    const personality = source.entities.getComponentOrThrow(human, Personality);
+    personality.curiosity = 1;
+    personality.caution = 0;
+    setNeeds(source, { hydration: 1, hunger: 1, energy: 1 });
+    source.start();
+
+    let started = false;
+    for (let ticks = 0; ticks < 50 && !started; ticks += 5) {
+      source.step(5);
+      const state = source.entities.getComponent(human, NeedsState);
+      started = state?.action === 'eat' && state.foodIntent === 'deliberateExperiment';
+    }
+    expect(started).toBe(true);
+    const snapshot = source.captureSnapshot();
+    source.dispose();
+
+    const restored = needsSystems();
+    restored.restoreSnapshot(snapshot);
+    restored.start();
+    restored.step(300);
+    const episodes = restored.entities
+      .getComponentOrThrow(human, CognitiveMemory)
+      .episodic.filter(
+        (entry) =>
+          entry.experience?.kind === 'food.ingestion' &&
+          entry.experience.motivation === 'deliberateExperiment',
+      );
+    expect(episodes).toHaveLength(1);
+    restored.dispose();
   });
 
   /**
@@ -798,6 +865,7 @@ describe('NeedSatisfactionSystem', () => {
       resourceOwnerChunkKey: null,
       resourceLocalId: null,
       resourceConceptId: 'mushroom:legacy',
+      foodIntent: 'satisfyNeed',
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,

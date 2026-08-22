@@ -26,6 +26,7 @@ export type { Belief, CognitiveKnowledgeComponent } from './cognitiveKnowledge.j
 export type {
   CognitiveMemoryComponent,
   EpisodicMemoryEntry,
+  FoodIngestionExperience,
   SocialMemoryEntry,
   SpatialMemoryEntry,
   WorldRef,
