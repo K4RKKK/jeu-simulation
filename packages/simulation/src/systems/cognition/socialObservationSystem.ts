@@ -42,7 +42,7 @@ import { SocialSpatialIndex } from './socialSpatialIndex.js';
  *
  * Éviction `SocialMemory` : quand `maxSocialEntries` est atteint, on refuse de créer
  * une nouvelle entrée pour un acteur si toutes les entrées existantes correspondent à
- * des acteurs ACTUELLEMENT observés — sinon la même occurrence physique pourrait être
+ * des acteurs ACTUELLEMENT visibles par cet observateur — sinon la même occurrence physique pourrait être
  * ré-observée après éviction et générer un doublon d'épisode. Cette protection est
  * plus importante que d'apprendre à connaître un tout nouvel humain immédiatement.
  */
@@ -71,17 +71,29 @@ export class SocialObservationSystem implements SimulationSystem {
     if (activeActors.size === 0) return; // rien à observer, on épargne les passes observateur
 
     // 2. Chaque observateur (Transform + CognitiveMemory) interroge l'index à SA
-    //    position actuelle. Un observateur qui est lui-même un acteur actif s'y
-    //    trouvera dans les buckets, on l'exclut explicitement via observer !== actor.
+    //    position actuelle. La protection contre l'éviction est donc locale à son
+    //    champ de vision, jamais dérivée de tous les acteurs actifs du monde.
     ctx.entities.each(
       [Transform, CognitiveMemory],
       (observer, observerTransform, observerMemory) => {
+        const visibleActiveActorIds = new Set<EntityId>();
         index.forEachNear(observerTransform.x, observerTransform.z, visionRangeM, (actor) => {
           if (actor === observer) return; // pas d'auto-observation
-          const record = activeActors.get(actor);
-          if (record === undefined) return; // safety net : bucket incohérent (ne devrait pas arriver)
-          this.observe(ctx, observerMemory, observer, actor, record.action, activeActors, config);
+          visibleActiveActorIds.add(actor);
         });
+        for (const actor of visibleActiveActorIds) {
+          const record = activeActors.get(actor);
+          if (record === undefined) continue; // safety net : bucket incohérent (ne devrait pas arriver)
+          this.observe(
+            ctx,
+            observerMemory,
+            observer,
+            actor,
+            record.action,
+            visibleActiveActorIds,
+            config,
+          );
+        }
       },
     );
   }
@@ -92,7 +104,7 @@ export class SocialObservationSystem implements SimulationSystem {
     observer: EntityId,
     actor: EntityId,
     action: ObservableActionComponent,
-    activeActors: Map<EntityId, unknown>,
+    visibleActiveActorIds: ReadonlySet<EntityId>,
     config: {
       familiarityGainPerAction: number;
       maxSocialEntries: number;
@@ -104,7 +116,7 @@ export class SocialObservationSystem implements SimulationSystem {
     // cours, sans quoi un doublon d'épisode s'écrirait au prochain passage.
     const existing = observerMemory.social.find((entry) => entry.humanId === actor);
     if (existing === undefined && observerMemory.social.length >= config.maxSocialEntries) {
-      const evicted = this.evictOldestUnprotected(observerMemory, activeActors);
+      const evicted = this.evictOldestUnprotected(observerMemory, visibleActiveActorIds);
       if (!evicted) {
         // Toutes les entrées sont protégées : on laisse tomber la nouvelle relation
         // plutôt que de fabriquer un doublon d'observation ; observer.
@@ -156,14 +168,14 @@ export class SocialObservationSystem implements SimulationSystem {
    */
   private evictOldestUnprotected(
     memory: CognitiveMemoryComponent,
-    activeActors: Map<EntityId, unknown>,
+    visibleActiveActorIds: ReadonlySet<EntityId>,
   ): boolean {
     let victimIndex = -1;
     let victimLastContact = Number.POSITIVE_INFINITY;
     let victimHumanId = Number.POSITIVE_INFINITY;
     for (let i = 0; i < memory.social.length; i++) {
       const candidate = memory.social[i]!;
-      if (activeActors.has(candidate.humanId)) continue;
+      if (visibleActiveActorIds.has(candidate.humanId)) continue;
       if (
         candidate.lastContactTick < victimLastContact ||
         (candidate.lastContactTick === victimLastContact && candidate.humanId < victimHumanId)

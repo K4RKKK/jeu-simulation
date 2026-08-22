@@ -21,6 +21,10 @@ import {
   createEmptyHumanSkills,
 } from '../../components/index.js';
 import type { ObservableActionKind } from '../../components/index.js';
+import {
+  getOrCreateSocialEntry,
+  recordObservedOccurrence,
+} from '../../cognition/socialMemoryModel.js';
 import { Simulation } from '../../simulation.js';
 import { SocialObservationSystem } from './socialObservationSystem.js';
 
@@ -31,14 +35,17 @@ import { SocialObservationSystem } from './socialObservationSystem.js';
  * qu'UN épisode par occurrence physique.
  */
 
-function makeSocialSimulation(): Simulation {
+function makeSocialSimulation(maxSocialEntries = 32): Simulation {
   // Uniquement SocialObservationSystem enregistré : isolation totale — pas de
   // NeedSatisfactionSystem qui viendrait projeter ou effacer ObservableAction et
   // fausser les observations. Les acteurs sont posés à la main dans chaque test.
   return new Simulation({
     seed: 'social-observation',
     spawnInitialPopulation: false,
-    config: { time: { gameSecondsPerTick: 1 } },
+    config: {
+      time: { gameSecondsPerTick: 1 },
+      cognition: { socialObservation: { maxSocialEntries } },
+    },
     systems: [new SocialObservationSystem()],
   });
 }
@@ -320,6 +327,65 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     expect(memory.social.find((s) => s.humanId === bob)?.lastObservedActionKind).toBe(
       'food.ingestion',
     );
+    sim.dispose();
+  });
+
+  it('EVICTION IS LOCAL : des acteurs actifs lointains ne bloquent pas une nouvelle relation visible', () => {
+    const sim = makeSocialSimulation(2);
+    const observer = makeHumanAt(sim, 0, 0);
+    const farOldest = makeHumanAt(sim, 1_000, 0);
+    const farRecent = makeHumanAt(sim, 1_100, 0);
+    const localNewcomer = makeHumanAt(sim, 5, 0);
+    startAction(sim, farOldest, 'resource.gathering', 10, 'berry:red');
+    startAction(sim, farRecent, 'food.ingestion', 11, 'mushroom:brown');
+    startAction(sim, localNewcomer, 'resource.gathering', 12, 'berry:blue');
+
+    const memory = sim.entities.getComponentOrThrow(observer, CognitiveMemory);
+    getOrCreateSocialEntry(memory, farOldest, 1);
+    getOrCreateSocialEntry(memory, farRecent, 2);
+
+    sim.start();
+    sim.step(5);
+
+    expect(memory.social.map((entry) => entry.humanId)).toEqual([farRecent, localNewcomer]);
+    expect(
+      memory.episodic.some(
+        (episode) =>
+          episode.experience?.kind === 'social.actionObserved' &&
+          episode.experience.actorId === localNewcomer,
+      ),
+    ).toBe(true);
+    sim.dispose();
+  });
+
+  it('VISIBLE OCCURRENCE STAYS PROTECTED : conserve la dédup et évince seulement l’entrée invisible', () => {
+    const sim = makeSocialSimulation(2);
+    const observer = makeHumanAt(sim, 0, 0);
+    const visibleKnown = makeHumanAt(sim, 4, 0);
+    const farKnown = makeHumanAt(sim, 1_000, 0);
+    const localNewcomer = makeHumanAt(sim, 5, 0);
+    startAction(sim, visibleKnown, 'resource.gathering', 10, 'berry:red');
+    startAction(sim, farKnown, 'food.ingestion', 11, 'mushroom:brown');
+    startAction(sim, localNewcomer, 'resource.gathering', 12, 'berry:blue');
+
+    const memory = sim.entities.getComponentOrThrow(observer, CognitiveMemory);
+    const visibleEntry = getOrCreateSocialEntry(memory, visibleKnown, 1);
+    recordObservedOccurrence(visibleEntry, 'resource.gathering', 10, 'berry:red', 1, 0.05);
+    getOrCreateSocialEntry(memory, farKnown, 2);
+    const familiarityBefore = visibleEntry.familiarity01;
+
+    sim.start();
+    sim.step(5);
+
+    expect(memory.social.map((entry) => entry.humanId)).toEqual([visibleKnown, localNewcomer]);
+    expect(visibleEntry.familiarity01).toBe(familiarityBefore);
+    expect(
+      memory.episodic.filter(
+        (episode) =>
+          episode.experience?.kind === 'social.actionObserved' &&
+          episode.experience.actorId === visibleKnown,
+      ),
+    ).toHaveLength(0);
     sim.dispose();
   });
 

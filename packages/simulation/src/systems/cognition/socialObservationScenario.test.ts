@@ -127,8 +127,13 @@ describe("Phase 3.8 — scénario final d'acceptation", () => {
     const observedEpisodes = bobMemory.episodic.filter(
       (e) => e.eventType === 'social.actionObserved',
     );
-    // Au moins UNE observation sociale (typiquement 2 : gather puis food.ingestion).
-    expect(observedEpisodes.length).toBeGreaterThanOrEqual(1);
+    const observedActionKinds = observedEpisodes.flatMap((episode) =>
+      episode.experience?.kind === 'social.actionObserved'
+        ? [episode.experience.observedAction]
+        : [],
+    );
+    expect(observedActionKinds).toContain('resource.gathering');
+    expect(observedActionKinds).toContain('food.ingestion');
     // SocialMemoryEntry existe, trust reste neutre, familiarity a monté.
     const socialEntry = bobMemory.social.find((s) => s.humanId === A);
     expect(socialEntry).toBeDefined();
@@ -147,23 +152,14 @@ describe("Phase 3.8 — scénario final d'acceptation", () => {
     expect(bobKnowledge.beliefs.some((b) => b.property === FOOD_ILLNESS_RISK_PROPERTY)).toBe(false);
 
     // ─── Ce que B a bien appris socialement ───────────────────────────────────────
-    // Belief food.observedIngestion présente uniquement si A a effectivement mangé
-    // sous les yeux de B. C'est le cas dans le scénario nominal.
-    const observedIngestionKinds = observedEpisodes
-      .map((e) => e.experience?.kind === 'social.actionObserved' && e.experience.observedAction)
-      .filter((v): v is 'food.ingestion' | 'resource.gathering' => v !== false);
-    if (observedIngestionKinds.includes('food.ingestion')) {
-      expect(
-        bobKnowledge.beliefs.find((b) => b.property === FOOD_OBSERVED_INGESTION_PROPERTY),
-      ).toBeDefined();
-      expect(
-        observedFoodIngestionConfidence01(bobKnowledge, spawn.perceptualConceptId),
-      ).toBeGreaterThan(0);
-    } else {
-      // Fallback (A n'a pas eu le temps de manger dans les 400 ticks alloués) :
-      // au moins la gathering est visible et rien n'a fuité côté croyances.
-      expect(observedIngestionKinds).toContain('resource.gathering');
-    }
+    const observedIngestionBelief = bobKnowledge.beliefs.find(
+      (belief) => belief.property === FOOD_OBSERVED_INGESTION_PROPERTY,
+    );
+    expect(observedIngestionBelief).toBeDefined();
+    expect(observedIngestionBelief!.confidence01).toBeGreaterThan(0);
+    expect(
+      observedFoodIngestionConfidence01(bobKnowledge, spawn.perceptualConceptId),
+    ).toBeGreaterThan(0);
 
     sim.dispose();
   });
