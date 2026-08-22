@@ -691,10 +691,7 @@ export function migrateSnapshotV18ToV19(snapshot: SimulationSnapshot): Simulatio
     [key: string]: unknown;
   };
   const components = snapshot.entities.components;
-  const memories = (components.CognitiveMemory ?? []) as unknown as [
-    EntityId,
-    LegacyMemory,
-  ][];
+  const memories = (components.CognitiveMemory ?? []) as unknown as [EntityId, LegacyMemory][];
   return {
     ...snapshot,
     version: 19,

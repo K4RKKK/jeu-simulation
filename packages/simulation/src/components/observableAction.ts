@@ -45,5 +45,4 @@ export interface ObservableActionComponent {
   readonly subjectConceptId: ConceptId | null;
 }
 
-export const ObservableAction =
-  defineComponent<ObservableActionComponent>('ObservableAction');
+export const ObservableAction = defineComponent<ObservableActionComponent>('ObservableAction');

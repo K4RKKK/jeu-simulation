@@ -7,7 +7,7 @@ import {
 } from './socialFoodBeliefModel.js';
 
 describe('socialFoodBeliefModel — food.observedIngestion', () => {
-  it("crée une belief avec value01=1 et confidence=gain à la première observation", () => {
+  it('crée une belief avec value01=1 et confidence=gain à la première observation', () => {
     const knowledge = createEmptyCognitiveKnowledge();
     applyObservedFoodIngestionEvidence(knowledge, 'berry:red', 10, 0.25);
     expect(knowledge.beliefs).toHaveLength(1);
@@ -34,7 +34,7 @@ describe('socialFoodBeliefModel — food.observedIngestion', () => {
     expect(observedFoodIngestionConfidence01(knowledge, 'berry:red')).toBeLessThan(1);
   });
 
-  it("laisse INTACTES les croyances food.nourishing et food.illnessRisk", () => {
+  it('laisse INTACTES les croyances food.nourishing et food.illnessRisk', () => {
     const knowledge = createEmptyCognitiveKnowledge();
     // Pose manuellement des croyances de vérité — la belief sociale ne doit pas les
     // effacer, les modifier ni empêcher leur lecture future.
@@ -65,7 +65,7 @@ describe('socialFoodBeliefModel — food.observedIngestion', () => {
     expect(illnessRisk.confidence01).toBe(0.9);
   });
 
-  it("evidenceCount croît, la valeur reste 1", () => {
+  it('evidenceCount croît, la valeur reste 1', () => {
     const knowledge = createEmptyCognitiveKnowledge();
     for (let i = 0; i < 5; i++) applyObservedFoodIngestionEvidence(knowledge, 'berry:red', i, 0.3);
     const belief = knowledge.beliefs.find((b) => b.subjectConcept === 'berry:red')!;
@@ -73,7 +73,7 @@ describe('socialFoodBeliefModel — food.observedIngestion', () => {
     expect(belief.value).toEqual({ kind: 'probability', value01: 1 });
   });
 
-  it("clampe un gain hors bornes en toute sécurité", () => {
+  it('clampe un gain hors bornes en toute sécurité', () => {
     const knowledge = createEmptyCognitiveKnowledge();
     applyObservedFoodIngestionEvidence(knowledge, 'berry:red', 0, -0.5);
     expect(observedFoodIngestionConfidence01(knowledge, 'berry:red')).toBe(0);
@@ -84,7 +84,7 @@ describe('socialFoodBeliefModel — food.observedIngestion', () => {
     expect(observedFoodIngestionConfidence01(knowledge, 'mushroom:brown')).toBe(1);
   });
 
-  it("retourne 0 pour un concept jamais observé", () => {
+  it('retourne 0 pour un concept jamais observé', () => {
     const knowledge = createEmptyCognitiveKnowledge();
     expect(observedFoodIngestionConfidence01(knowledge, 'berry:red')).toBe(0);
     expect(observedFoodIngestionConfidence01(knowledge, undefined)).toBe(0);

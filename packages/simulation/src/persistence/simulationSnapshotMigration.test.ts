@@ -1208,7 +1208,12 @@ describe('migrateSnapshotV18ToV19', () => {
     const migrated = migrateSnapshotV18ToV19(v18);
     expect(migrated.version).toBe(19);
     const migratedMemory = (migrated.entities.components.CognitiveMemory ?? [])[0]?.[1] as {
-      social: { humanId: number; lastObservedActionKind: unknown; lastObservedActionStartedTick: number; lastObservedActionConceptId: unknown }[];
+      social: {
+        humanId: number;
+        lastObservedActionKind: unknown;
+        lastObservedActionStartedTick: number;
+        lastObservedActionConceptId: unknown;
+      }[];
     };
     const migratedEntry = migratedMemory.social[0]!;
     expect(migratedEntry.lastObservedActionKind).toBeNull();
@@ -1236,8 +1241,12 @@ describe('migrateSnapshotV18ToV19', () => {
   });
 
   it("refuse d'être appelé avec une version différente de 18", () => {
-    expect(() => migrateSnapshotV18ToV19({ version: 17 } as unknown as SimulationSnapshot)).toThrow();
-    expect(() => migrateSnapshotV18ToV19({ version: 19 } as unknown as SimulationSnapshot)).toThrow();
+    expect(() =>
+      migrateSnapshotV18ToV19({ version: 17 } as unknown as SimulationSnapshot),
+    ).toThrow();
+    expect(() =>
+      migrateSnapshotV18ToV19({ version: 19 } as unknown as SimulationSnapshot),
+    ).toThrow();
   });
 
   it("accepte le fingerprint pré-socialObservation d'une vraie sauvegarde v18", () => {

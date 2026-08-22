@@ -118,7 +118,7 @@ function startAction(
 }
 
 describe('SocialObservationSystem — frontière et dédup', () => {
-  it("IN RANGE : un acteur visible produit une observation sociale", () => {
+  it('IN RANGE : un acteur visible produit une observation sociale', () => {
     const sim = makeSocialSimulation();
     const actor = makeHumanAt(sim, 0, 0);
     const observer = makeHumanAt(sim, 5, 0); // à 5 m, portée = 32 m
@@ -179,9 +179,7 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     // Plusieurs passes medium consécutives sur la MÊME occurrence.
     sim.step(50);
     const memory = sim.entities.getComponentOrThrow(observer, CognitiveMemory);
-    const observedEpisodes = memory.episodic.filter(
-      (e) => e.eventType === 'social.actionObserved',
-    );
+    const observedEpisodes = memory.episodic.filter((e) => e.eventType === 'social.actionObserved');
     expect(observedEpisodes).toHaveLength(1);
     sim.dispose();
   });
@@ -197,9 +195,7 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     startAction(sim, actor, 'resource.gathering', 25, 'berry:red');
     sim.step(5);
     const memory = sim.entities.getComponentOrThrow(observer, CognitiveMemory);
-    const observedEpisodes = memory.episodic.filter(
-      (e) => e.eventType === 'social.actionObserved',
-    );
+    const observedEpisodes = memory.episodic.filter((e) => e.eventType === 'social.actionObserved');
     expect(observedEpisodes).toHaveLength(2);
     const entry = memory.social.find((s) => s.humanId === actor)!;
     expect(entry.lastObservedActionStartedTick).toBe(25);
@@ -252,7 +248,7 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     expect(starving.entry).toEqual(expert.entry);
   });
 
-  it("TRUST DOES NOT AUTO GROW : la confiance reste neutre malgré de multiples observations", () => {
+  it('TRUST DOES NOT AUTO GROW : la confiance reste neutre malgré de multiples observations', () => {
     const sim = makeSocialSimulation();
     const actor = makeHumanAt(sim, 0, 0);
     const observer = makeHumanAt(sim, 5, 0);
@@ -272,7 +268,7 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     sim.dispose();
   });
 
-  it("FAMILIARITY : monte à chaque NOUVELLE occurrence, jamais par simple présence prolongée", () => {
+  it('FAMILIARITY : monte à chaque NOUVELLE occurrence, jamais par simple présence prolongée', () => {
     const sim = makeSocialSimulation();
     const actor = makeHumanAt(sim, 0, 0);
     const observer = makeHumanAt(sim, 5, 0);
@@ -292,7 +288,7 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     sim.dispose();
   });
 
-  it("MANY OBSERVERS : chaque observateur produit son propre souvenir; les absents ne voient rien", () => {
+  it('MANY OBSERVERS : chaque observateur produit son propre souvenir; les absents ne voient rien', () => {
     const sim = makeSocialSimulation();
     const actor = makeHumanAt(sim, 0, 0);
     const near1 = makeHumanAt(sim, 5, 0);
@@ -307,7 +303,7 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     sim.dispose();
   });
 
-  it("MANY ACTORS : un observateur mémorise séparément chaque acteur", () => {
+  it('MANY ACTORS : un observateur mémorise séparément chaque acteur', () => {
     const sim = makeSocialSimulation();
     const observer = makeHumanAt(sim, 0, 0);
     const alice = makeHumanAt(sim, 5, 0);
@@ -327,7 +323,7 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     sim.dispose();
   });
 
-  it("SAME CONCEPT DIFFERENT DEFINITIONS : perceptualConceptId identique → observation identique", () => {
+  it('SAME CONCEPT DIFFERENT DEFINITIONS : perceptualConceptId identique → observation identique', () => {
     // Deux "définitions moteur" différentes projetées avec le MÊME concept perceptif.
     // Le système ne connaît que le concept, il doit produire deux occurrences distinctes
     // (kind identique, mais startedAtTick différents) toutes deux sur berry:red.
@@ -342,22 +338,18 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     const memory = sim.entities.getComponentOrThrow(observer, CognitiveMemory);
     // Deux acteurs distincts observés, même concept.
     expect(memory.social).toHaveLength(2);
-    expect(
-      memory.social.every((s) => s.lastObservedActionConceptId === 'berry:red'),
-    ).toBe(true);
+    expect(memory.social.every((s) => s.lastObservedActionConceptId === 'berry:red')).toBe(true);
     sim.dispose();
   });
 
-  it("SAVE MID ACTION : rechargement pendant une action ne produit pas de doublon", () => {
+  it('SAVE MID ACTION : rechargement pendant une action ne produit pas de doublon', () => {
     const sim = makeSocialSimulation();
     const actor = makeHumanAt(sim, 0, 0);
     const observer = makeHumanAt(sim, 5, 0);
     startAction(sim, actor, 'resource.gathering', 10, 'berry:red');
     sim.start();
     sim.step(5);
-    expect(
-      sim.entities.getComponentOrThrow(observer, CognitiveMemory).episodic.length,
-    ).toBe(1);
+    expect(sim.entities.getComponentOrThrow(observer, CognitiveMemory).episodic.length).toBe(1);
     // Snapshot après observation, restore dans une simulation fraîche.
     const snapshot = sim.captureSnapshot();
     const restored = makeSocialSimulation();
@@ -368,9 +360,9 @@ describe('SocialObservationSystem — frontière et dédup', () => {
     restored.step(20); // plusieurs passes supplémentaires
     // Aucun deuxième épisode ne doit être créé pour la même occurrence.
     expect(
-      restored.entities.getComponentOrThrow(observer, CognitiveMemory).episodic.filter(
-        (e) => e.eventType === 'social.actionObserved',
-      ).length,
+      restored.entities
+        .getComponentOrThrow(observer, CognitiveMemory)
+        .episodic.filter((e) => e.eventType === 'social.actionObserved').length,
     ).toBe(1);
     sim.dispose();
     restored.dispose();

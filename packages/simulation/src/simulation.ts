@@ -591,7 +591,10 @@ export class Simulation {
     // rien retiré, ce qui casserait la comparaison avec les vraies sauvegardes v18.
     const historicalCognition = ((): unknown => {
       if (!options.includeCognition) return undefined;
-      const stripped: Record<string, unknown> = { ...cognition } as unknown as Record<string, unknown>;
+      const stripped: Record<string, unknown> = { ...cognition } as unknown as Record<
+        string,
+        unknown
+      >;
       if (!options.includeExperimentation) delete stripped.experimentation;
       if (!options.includeSocialObservation) delete stripped.socialObservation;
       return stripped;

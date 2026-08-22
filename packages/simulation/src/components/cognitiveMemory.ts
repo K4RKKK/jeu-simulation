@@ -66,9 +66,7 @@ export interface EpisodicMemoryEntry {
 }
 
 export type LivedExperience =
-  | FoodIngestionExperience
-  | ResourceGatheringExperience
-  | ObservedActionExperience;
+  FoodIngestionExperience | ResourceGatheringExperience | ObservedActionExperience;
 
 export interface FoodIngestionExperience {
   readonly kind: 'food.ingestion';

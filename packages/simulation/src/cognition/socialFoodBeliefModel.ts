@@ -34,8 +34,7 @@ export function applyObservedFoodIngestionEvidence(
   const gain = clamp01(directObservationGain);
   const existing = knowledge.beliefs.find(
     (belief) =>
-      belief.subjectConcept === conceptId &&
-      belief.property === FOOD_OBSERVED_INGESTION_PROPERTY,
+      belief.subjectConcept === conceptId && belief.property === FOOD_OBSERVED_INGESTION_PROPERTY,
   );
   if (existing === undefined) {
     knowledge.beliefs.push({

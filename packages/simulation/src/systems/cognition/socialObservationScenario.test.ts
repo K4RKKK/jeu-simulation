@@ -80,7 +80,7 @@ function firstEdibleSpawnNearHuman(sim: Simulation, actor: EntityId): ResourceSp
   return spawn;
 }
 
-describe('Phase 3.8 — scénario final d\'acceptation', () => {
+describe("Phase 3.8 — scénario final d'acceptation", () => {
   it('B observe A gather puis manger berry:red sans jamais copier son état interne', () => {
     const sim = makeScenarioSimulation();
     const [alice, bob] = sim.humanIds();

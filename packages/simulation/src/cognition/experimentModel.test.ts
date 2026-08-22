@@ -163,7 +163,7 @@ describe('food experimentation model', () => {
       });
     });
 
-    it("SOCIAL SUPPORT : une observation sociale AUGMENTE le score, sans écraser la base", () => {
+    it('SOCIAL SUPPORT : une observation sociale AUGMENTE le score, sans écraser la base', () => {
       const memory = createEmptyCognitiveMemory();
       const knowledge = createEmptyCognitiveKnowledge();
       const weighted = { ...config, socialImitationWeight: 0.35 };

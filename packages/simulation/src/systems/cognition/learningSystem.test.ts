@@ -166,7 +166,7 @@ describe('LearningSystem', () => {
   // Phase 3.8 — social.actionObserved dispatch. Un observateur consolide une croyance
   // SOCIALE dédiée, jamais les croyances de vérité (nourishing/illnessRisk) ni les skills.
   describe('social.actionObserved dispatch (Phase 3.8)', () => {
-    it("NO SKILL COPY : observer un gather ne donne aucune maîtrise", () => {
+    it('NO SKILL COPY : observer un gather ne donne aucune maîtrise', () => {
       const world = simulation();
       const observer = world.humanIds()[0]!;
       const actor = world.humanIds()[1]!;
@@ -202,7 +202,7 @@ describe('LearningSystem', () => {
       world.dispose();
     });
 
-    it("NO NOURISHING/ILLNESS MAGIC : observer une ingestion ne touche jamais food.nourishing ni food.illnessRisk", () => {
+    it('NO NOURISHING/ILLNESS MAGIC : observer une ingestion ne touche jamais food.nourishing ni food.illnessRisk', () => {
       const world = simulation();
       const observer = world.humanIds()[0]!;
       const actor = world.humanIds()[1]!;
@@ -231,12 +231,8 @@ describe('LearningSystem', () => {
       world.start();
       world.step(6);
       const knowledge = world.entities.getComponentOrThrow(observer, CognitiveKnowledge);
-      expect(
-        knowledge.beliefs.some((b) => b.property === FOOD_NOURISHING_PROPERTY),
-      ).toBe(false);
-      expect(
-        knowledge.beliefs.some((b) => b.property === FOOD_ILLNESS_RISK_PROPERTY),
-      ).toBe(false);
+      expect(knowledge.beliefs.some((b) => b.property === FOOD_NOURISHING_PROPERTY)).toBe(false);
+      expect(knowledge.beliefs.some((b) => b.property === FOOD_ILLNESS_RISK_PROPERTY)).toBe(false);
       // Mais food.observedIngestion est présent.
       expect(observedFoodIngestionConfidence01(knowledge, 'berry:red')).toBeGreaterThan(0);
       expect(
@@ -274,7 +270,9 @@ describe('LearningSystem', () => {
       world.start();
       world.step(6);
       const knowledge = world.entities.getComponentOrThrow(observer, CognitiveKnowledge);
-      const belief = knowledge.beliefs.find((b) => b.property === FOOD_OBSERVED_INGESTION_PROPERTY)!;
+      const belief = knowledge.beliefs.find(
+        (b) => b.property === FOOD_OBSERVED_INGESTION_PROPERTY,
+      )!;
       const confAfterFirst = belief.confidence01;
       // Plusieurs passes du même épisode : lastProcessedExperienceId empêche la reconsolidation.
       world.step(10);

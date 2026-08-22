@@ -1,9 +1,5 @@
 import type { EntityId } from '@civ/shared';
-import {
-  CognitiveMemory,
-  ObservableAction,
-  Transform,
-} from '../../components/index.js';
+import { CognitiveMemory, ObservableAction, Transform } from '../../components/index.js';
 import type {
   CognitiveMemoryComponent,
   ObservableActionComponent,
@@ -67,13 +63,10 @@ export class SocialObservationSystem implements SimulationSystem {
       EntityId,
       { transform: TransformComponent; action: ObservableActionComponent }
     > = new Map();
-    ctx.entities.each(
-      [Transform, ObservableAction],
-      (entity, transform, action) => {
-        index.add(entity, transform.x, transform.z);
-        activeActors.set(entity, { transform, action });
-      },
-    );
+    ctx.entities.each([Transform, ObservableAction], (entity, transform, action) => {
+      index.add(entity, transform.x, transform.z);
+      activeActors.set(entity, { transform, action });
+    });
 
     if (activeActors.size === 0) return; // rien à observer, on épargne les passes observateur
 
@@ -83,17 +76,12 @@ export class SocialObservationSystem implements SimulationSystem {
     ctx.entities.each(
       [Transform, CognitiveMemory],
       (observer, observerTransform, observerMemory) => {
-        index.forEachNear(
-          observerTransform.x,
-          observerTransform.z,
-          visionRangeM,
-          (actor) => {
-            if (actor === observer) return; // pas d'auto-observation
-            const record = activeActors.get(actor);
-            if (record === undefined) return; // safety net : bucket incohérent (ne devrait pas arriver)
-            this.observe(ctx, observerMemory, observer, actor, record.action, activeActors, config);
-          },
-        );
+        index.forEachNear(observerTransform.x, observerTransform.z, visionRangeM, (actor) => {
+          if (actor === observer) return; // pas d'auto-observation
+          const record = activeActors.get(actor);
+          if (record === undefined) return; // safety net : bucket incohérent (ne devrait pas arriver)
+          this.observe(ctx, observerMemory, observer, actor, record.action, activeActors, config);
+        });
       },
     );
   }
