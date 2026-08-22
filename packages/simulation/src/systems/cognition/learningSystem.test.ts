@@ -5,6 +5,10 @@ import {
   FOOD_ILLNESS_RISK_PROPERTY,
   FOOD_NOURISHING_PROPERTY,
 } from '../../cognition/foodBeliefModel.js';
+import {
+  FOOD_OBSERVED_INGESTION_PROPERTY,
+  observedFoodIngestionConfidence01,
+} from '../../cognition/socialFoodBeliefModel.js';
 import { Simulation } from '../../simulation.js';
 import { LearningSystem } from './learningSystem.js';
 
@@ -157,5 +161,126 @@ describe('LearningSystem', () => {
       ]),
     );
     world.dispose();
+  });
+
+  // Phase 3.8 — social.actionObserved dispatch. Un observateur consolide une croyance
+  // SOCIALE dédiée, jamais les croyances de vérité (nourishing/illnessRisk) ni les skills.
+  describe('social.actionObserved dispatch (Phase 3.8)', () => {
+    it("NO SKILL COPY : observer un gather ne donne aucune maîtrise", () => {
+      const world = simulation();
+      const observer = world.humanIds()[0]!;
+      const actor = world.humanIds()[1]!;
+      const memory = world.entities.getComponentOrThrow(observer, CognitiveMemory);
+      // Poser 100 observations d'un gather expert pour tester l'invariant à saturation.
+      for (let i = 0; i < 100; i++) {
+        rememberEpisodic(
+          memory,
+          {
+            tick: i + 1,
+            eventType: 'social.actionObserved',
+            actors: [observer, actor],
+            subjectConcept: 'berry:red',
+            outcome: 'social.action_perceived',
+            emotionalStrength01: 0.25,
+            experience: {
+              kind: 'social.actionObserved',
+              actorId: actor,
+              observedAction: 'resource.gathering',
+              subjectConceptId: 'berry:red',
+              actionStartedTick: i * 100,
+              observationTick: i + 1,
+              source: 'directObservation',
+            },
+          },
+          world.config.cognition,
+        );
+      }
+      world.start();
+      world.step(6);
+      const skills = world.entities.getComponentOrThrow(observer, HumanSkills);
+      expect(skills.skills).toHaveLength(0); // aucun skill créé
+      world.dispose();
+    });
+
+    it("NO NOURISHING/ILLNESS MAGIC : observer une ingestion ne touche jamais food.nourishing ni food.illnessRisk", () => {
+      const world = simulation();
+      const observer = world.humanIds()[0]!;
+      const actor = world.humanIds()[1]!;
+      const memory = world.entities.getComponentOrThrow(observer, CognitiveMemory);
+      rememberEpisodic(
+        memory,
+        {
+          tick: 5,
+          eventType: 'social.actionObserved',
+          actors: [observer, actor],
+          subjectConcept: 'berry:red',
+          outcome: 'social.action_perceived',
+          emotionalStrength01: 0.25,
+          experience: {
+            kind: 'social.actionObserved',
+            actorId: actor,
+            observedAction: 'food.ingestion',
+            subjectConceptId: 'berry:red',
+            actionStartedTick: 3,
+            observationTick: 5,
+            source: 'directObservation',
+          },
+        },
+        world.config.cognition,
+      );
+      world.start();
+      world.step(6);
+      const knowledge = world.entities.getComponentOrThrow(observer, CognitiveKnowledge);
+      expect(
+        knowledge.beliefs.some((b) => b.property === FOOD_NOURISHING_PROPERTY),
+      ).toBe(false);
+      expect(
+        knowledge.beliefs.some((b) => b.property === FOOD_ILLNESS_RISK_PROPERTY),
+      ).toBe(false);
+      // Mais food.observedIngestion est présent.
+      expect(observedFoodIngestionConfidence01(knowledge, 'berry:red')).toBeGreaterThan(0);
+      expect(
+        knowledge.beliefs.find((b) => b.property === FOOD_OBSERVED_INGESTION_PROPERTY),
+      ).toBeDefined();
+      world.dispose();
+    });
+
+    it("SINGLE WATERMARK : une observation sociale déjà consolidée n'est pas retraitée", () => {
+      const world = simulation();
+      const observer = world.humanIds()[0]!;
+      const actor = world.humanIds()[1]!;
+      const memory = world.entities.getComponentOrThrow(observer, CognitiveMemory);
+      rememberEpisodic(
+        memory,
+        {
+          tick: 5,
+          eventType: 'social.actionObserved',
+          actors: [observer, actor],
+          subjectConcept: 'berry:red',
+          outcome: 'social.action_perceived',
+          emotionalStrength01: 0.25,
+          experience: {
+            kind: 'social.actionObserved',
+            actorId: actor,
+            observedAction: 'food.ingestion',
+            subjectConceptId: 'berry:red',
+            actionStartedTick: 3,
+            observationTick: 5,
+            source: 'directObservation',
+          },
+        },
+        world.config.cognition,
+      );
+      world.start();
+      world.step(6);
+      const knowledge = world.entities.getComponentOrThrow(observer, CognitiveKnowledge);
+      const belief = knowledge.beliefs.find((b) => b.property === FOOD_OBSERVED_INGESTION_PROPERTY)!;
+      const confAfterFirst = belief.confidence01;
+      // Plusieurs passes du même épisode : lastProcessedExperienceId empêche la reconsolidation.
+      world.step(10);
+      expect(belief.confidence01).toBe(confAfterFirst);
+      expect(belief.evidenceCount).toBe(1);
+      world.dispose();
+    });
   });
 });
