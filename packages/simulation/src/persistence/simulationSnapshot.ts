@@ -107,7 +107,17 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // Legacy food.edible probabilities migrate to inverse food.illnessRisk probabilities.
 // v17 : voluntary food experiments persist plan intent and experienced motivation.
 // v18 : individual procedural skills and timed gathering state are persisted.
-export const SIMULATION_SNAPSHOT_VERSION = 18;
+// v19 : Phase 3.8 — publicly observable actions and social observation dedup fields.
+// ObservableAction (kind, startedAtTick, subjectConceptId) is persisted on humans
+// currently gathering or eating so a save taken mid-action reloads to the exact
+// same occurrence — otherwise an observer would see the "same" action as two
+// distinct occurrences after restore. Each SocialMemoryEntry gains three dedup
+// fields (lastObservedActionKind, lastObservedActionStartedTick,
+// lastObservedActionConceptId) so an observer's chronology of what they have
+// already seen from an actor survives save/load. Migration NEVER fabricates a
+// past social observation — humans who existed before 3.8 keep their memories,
+// skills, and plans, and the new fields start neutral.
+export const SIMULATION_SNAPSHOT_VERSION = 19;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -634,6 +644,77 @@ export function migrateSnapshotV16ToV17(snapshot: SimulationSnapshot): Simulatio
             ...state,
             foodIntent:
               state.action === 'seekFood' || state.action === 'eat' ? 'satisfyNeed' : null,
+          },
+        ]),
+      },
+    },
+  };
+}
+
+/**
+ * v18 -> v19 (Phase 3.8) : la mémoire sociale gagne des champs de dédup, aucun
+ * ObservableAction n'est reconstitué. Fonction PURE et NON MUTANTE : reçoit une v18,
+ * retourne une nouvelle v19 sans jamais toucher à `snapshot`. Elle n'est pas
+ * idempotente au sens mathématique (rappelée sur une v19 elle lève), c'est le contrat
+ * de toutes les migrations existantes — bug évité : appeler une migration deux fois de
+ * suite sur la même valeur serait masqué et pourrait cacher un bug d'ordonnancement.
+ *
+ * Ce qui N'est PAS fabriqué :
+ * - Aucune ObservableAction rétroactive. Un humain qui était en train de gather au
+ *   moment d'une sauvegarde v18 reprendra son action normalement (state.action reste
+ *   'gatherFood'), mais SANS ObservableAction — un observateur voisin ne le verra pas
+ *   socialement pendant CETTE occurrence. Le prochain gather (dès que la boucle
+ *   revient dans `onArrival`) écrira l'ObservableAction proprement. Compromis accepté
+ *   plutôt que de fabriquer une action rétroactive dont on ne connaît pas le concept.
+ * - Aucune ObservedActionExperience rétroactive. Personne n'a rien observé socialement
+ *   avant la Phase 3.8 par définition.
+ * - Aucune belief `food.observedIngestion` rétroactive.
+ */
+export function migrateSnapshotV18ToV19(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 18) {
+    throw new Error(`migrateSnapshotV18ToV19: version ${snapshot.version} inattendue (18 requis)`);
+  }
+  type LegacySocialEntry = {
+    id: number;
+    humanId: number;
+    trust01: number;
+    familiarity01: number;
+    lastContactTick: number;
+    // Champs déjà présents dans les v18 générées avec le pré-buffer 3.8 ne devraient
+    // pas exister ; s'ils apparaissent (ré-application improbable), on les conserve.
+    lastObservedActionKind?: unknown;
+    lastObservedActionStartedTick?: unknown;
+    lastObservedActionConceptId?: unknown;
+  };
+  type LegacyMemory = {
+    social?: LegacySocialEntry[];
+    [key: string]: unknown;
+  };
+  const components = snapshot.entities.components;
+  const memories = (components.CognitiveMemory ?? []) as unknown as [
+    EntityId,
+    LegacyMemory,
+  ][];
+  return {
+    ...snapshot,
+    version: 19,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        CognitiveMemory: memories.map(([id, memory]) => [
+          id,
+          {
+            ...memory,
+            social: (memory.social ?? []).map((entry) => ({
+              ...entry,
+              lastObservedActionKind: entry.lastObservedActionKind ?? null,
+              lastObservedActionStartedTick:
+                typeof entry.lastObservedActionStartedTick === 'number'
+                  ? entry.lastObservedActionStartedTick
+                  : -1,
+              lastObservedActionConceptId: entry.lastObservedActionConceptId ?? null,
+            })),
           },
         ]),
       },

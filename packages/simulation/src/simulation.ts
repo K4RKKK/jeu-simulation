@@ -29,6 +29,7 @@ import {
   migrateSnapshotV15ToV16,
   migrateSnapshotV16ToV17,
   migrateSnapshotV17ToV18,
+  migrateSnapshotV18ToV19,
   restoreEntities,
   type SimulationSnapshot,
 } from './persistence/simulationSnapshot.js';
@@ -316,6 +317,7 @@ export class Simulation {
     if (snapshot.version === 15) snapshot = migrateSnapshotV15ToV16(snapshot);
     if (snapshot.version === 16) snapshot = migrateSnapshotV16ToV17(snapshot);
     if (snapshot.version === 17) snapshot = migrateSnapshotV17ToV18(snapshot);
+    if (snapshot.version === 18) snapshot = migrateSnapshotV18ToV19(snapshot);
     if (snapshot.version !== SIMULATION_SNAPSHOT_VERSION) {
       throw new Error(
         `restoreSnapshot: version ${snapshot.version} incompatible avec ${SIMULATION_SNAPSHOT_VERSION}`,

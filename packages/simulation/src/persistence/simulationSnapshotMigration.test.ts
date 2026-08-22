@@ -21,6 +21,7 @@ import {
   migrateSnapshotV15ToV16,
   migrateSnapshotV16ToV17,
   migrateSnapshotV17ToV18,
+  migrateSnapshotV18ToV19,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -946,7 +947,7 @@ describe('migrateSnapshotV16ToV17', () => {
 
     const target = makeSimulation('migration-v16-fingerprint');
     expect(() => target.restoreSnapshot(v16)).not.toThrow();
-    expect(target.captureSnapshot().version).toBe(18);
+    expect(target.captureSnapshot().version).toBe(19);
     target.dispose();
   });
 
@@ -1142,6 +1143,129 @@ describe('migrateSnapshotV17ToV18', () => {
 
     const drifted = makeSimulation('migration-v17-fingerprint');
     expect(() => drifted.restoreSnapshot(v17)).toThrow('configuration incompatible');
+    drifted.dispose();
+  });
+});
+
+/**
+ * Builds a genuine v18-shaped save : no ObservableAction, SocialMemory entries without
+ * the three Phase 3.8 dedup fields, and the historical pre-socialObservation fingerprint.
+ */
+function asV18Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): SimulationSnapshot {
+  const preSocialFingerprint = (
+    simulation as unknown as { preSocialObservationConfigFingerprint(): string }
+  ).preSocialObservationConfigFingerprint();
+  const { ObservableAction: _oa, ...components } = snapshot.entities.components;
+  type SocialLike = { lastObservedActionKind?: unknown; [k: string]: unknown };
+  const memories = (components.CognitiveMemory ?? []) as [number, { social?: SocialLike[] }][];
+  return {
+    ...snapshot,
+    version: 18,
+    configFingerprint: preSocialFingerprint,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        CognitiveMemory: memories.map(([id, memory]) => [
+          id,
+          {
+            ...memory,
+            social: (memory.social ?? []).map((entry) => {
+              const {
+                lastObservedActionKind: _k,
+                lastObservedActionStartedTick: _t,
+                lastObservedActionConceptId: _c,
+                ...legacy
+              } = entry;
+              return legacy;
+            }),
+          },
+        ]),
+      },
+    },
+  };
+}
+
+describe('migrateSnapshotV18ToV19', () => {
+  it('ajoute des champs de dédup neutres à chaque SocialMemoryEntry existante', () => {
+    const source = makeSimulation('migration-v18-v19');
+    const observer = source.humanIds()[0]!;
+    // Pose manuellement une SocialMemoryEntry v18-style (sans champs de dédup).
+    const memory = source.entities.getComponentOrThrow(observer, CognitiveMemory);
+    memory.social.push({
+      id: 42,
+      humanId: source.humanIds()[1]!,
+      trust01: 0.5,
+      familiarity01: 0.1,
+      lastContactTick: 3,
+      lastObservedActionKind: null,
+      lastObservedActionStartedTick: -1,
+      lastObservedActionConceptId: null,
+    });
+    const v18 = asV18Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const migrated = migrateSnapshotV18ToV19(v18);
+    expect(migrated.version).toBe(19);
+    const migratedMemory = (migrated.entities.components.CognitiveMemory ?? [])[0]?.[1] as {
+      social: { humanId: number; lastObservedActionKind: unknown; lastObservedActionStartedTick: number; lastObservedActionConceptId: unknown }[];
+    };
+    const migratedEntry = migratedMemory.social[0]!;
+    expect(migratedEntry.lastObservedActionKind).toBeNull();
+    expect(migratedEntry.lastObservedActionStartedTick).toBe(-1);
+    expect(migratedEntry.lastObservedActionConceptId).toBeNull();
+    // trust01/familiarity01 originaux conservés.
+    expect(migratedEntry).toMatchObject({ humanId: expect.any(Number) });
+  });
+
+  it("n'invente pas d'ObservableAction rétroactive", () => {
+    const source = makeSimulation('migration-v18-no-observable');
+    const v18 = asV18Snapshot(source, source.captureSnapshot());
+    source.dispose();
+    const migrated = migrateSnapshotV18ToV19(v18);
+    expect(migrated.entities.components.ObservableAction).toBeUndefined();
+  });
+
+  it('ne mute JAMAIS le snapshot original (pure)', () => {
+    const source = makeSimulation('migration-v18-pure');
+    const v18 = asV18Snapshot(source, source.captureSnapshot());
+    source.dispose();
+    const before = JSON.stringify(v18);
+    migrateSnapshotV18ToV19(v18);
+    expect(JSON.stringify(v18)).toBe(before);
+  });
+
+  it("refuse d'être appelé avec une version différente de 18", () => {
+    expect(() => migrateSnapshotV18ToV19({ version: 17 } as unknown as SimulationSnapshot)).toThrow();
+    expect(() => migrateSnapshotV18ToV19({ version: 19 } as unknown as SimulationSnapshot)).toThrow();
+  });
+
+  it("accepte le fingerprint pré-socialObservation d'une vraie sauvegarde v18", () => {
+    const source = new Simulation({
+      seed: 'migration-v18-fingerprint',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    const v18 = asV18Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const compatible = new Simulation({
+      seed: 'migration-v18-fingerprint',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    expect(() => compatible.restoreSnapshot(v18)).not.toThrow();
+    compatible.dispose();
+
+    const drifted = new Simulation({
+      seed: 'migration-v18-fingerprint',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        movement: { arrivalRadiusMeters: 999 },
+      },
+    });
+    expect(() => drifted.restoreSnapshot(v18)).toThrow('configuration incompatible');
     drifted.dispose();
   });
 });
