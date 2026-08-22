@@ -20,6 +20,9 @@ const appDialog = new AppDialog(requireElement<HTMLDialogElement>('#app-dialog')
 let runtimePromise: Promise<{ startGame(): void }> | null = null;
 
 const worldMenu = new WorldMenuController(
+  requireElement<HTMLElement>('#main-menu-screen'),
+  requireElement<HTMLElement>('#main-menu-options-screen'),
+  requireElement<HTMLElement>('#main-menu-options-content'),
   requireElement<HTMLElement>('#world-select-screen'),
   requireElement<HTMLElement>('#world-create-screen'),
   appDialog,
