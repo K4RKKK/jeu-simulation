@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NavGrid, PathFindingService } from '@civ/pathfinding';
-import { Activity, Movement, NeedsState, Transform } from '../../components/index.js';
+import { Activity, HumanPlan, Movement, NeedsState, Transform } from '../../components/index.js';
 import { Simulation } from '../../simulation.js';
 import { MovementSystem } from '../movementSystem.js';
 import { NeedSatisfactionSystem } from '../needs/needSatisfactionSystem.js';
@@ -122,6 +122,58 @@ describe('PathfindingSystem', () => {
     expect(movement.waypoints).toHaveLength(0);
     expect(activity.kind).toBe('idle');
     expect(activity.reason).toBe('chemin introuvable');
+    simulation.dispose();
+  });
+
+  it('keeps an unreachable failure on the move step and clears the stale seek', () => {
+    const simulation = new Simulation({
+      seed: 'planned-no-path',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+      systems: [new PathfindingSystem()],
+    });
+    simulation.start();
+    const entity = simulation.humanIds()[0]!;
+    const movement = simulation.entities.getComponentOrThrow(entity, Movement);
+    movement.targetX = 1e9;
+    movement.targetZ = 1e9;
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'seekWater',
+      targetX: 1e9,
+      targetZ: 1e9,
+      resourceId: null,
+      resourceOwnerChunkKey: null,
+      resourceLocalId: null,
+      resourceConceptId: null,
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    const plans = simulation.entities.getComponentOrThrow(entity, HumanPlan);
+    plans.activePlan = {
+      id: 0,
+      goalKind: 'survive.hydrate',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [
+        { kind: 'move.to_water', rememberedX: 1e9, rememberedZ: 1e9 },
+        { kind: 'drink', rememberedX: 1e9, rememberedZ: 1e9 },
+      ],
+      lastFailure: null,
+    };
+
+    simulation.step(20);
+    const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    expect(plans.activePlan?.currentStepIndex).toBe(0);
+    expect(plans.activePlan?.lastFailure?.reason).toBe('target.unreachable');
+    expect(plans.activePlan?.lastFailure?.stepIndex).toBe(0);
+    expect(state.action).toBe('none');
+    expect(movement.targetX).toBeNull();
     simulation.dispose();
   });
 

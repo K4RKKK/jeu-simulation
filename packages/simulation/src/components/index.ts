@@ -36,6 +36,7 @@ export type {
   HumanPlanComponent,
   PlanFailure,
   PlanFailureReason,
+  PlanFailureTarget,
   PlanStep,
 } from './humanPlan.js';
 export type { InteractiveResourceComponent } from './interactiveResource.js';

@@ -13,9 +13,11 @@ import type {
   CognitiveMemoryComponent,
   HumanPlanComponent,
   NeedsStateComponent,
+  PlanFailure,
   PersonalityComponent,
   PlanStep,
   PlanFailureReason,
+  SpatialMemoryEntry,
 } from '../../components/index.js';
 import {
   FOOD_ILLNESS_RISK_PROPERTY,
@@ -59,14 +61,36 @@ export class PlannerSystem implements SimulationSystem {
           active !== null &&
           active.currentStepIndex < active.steps.length &&
           active.lastFailure === null &&
-          !this.searchResolved(active, memory, knowledge, personality, transform.x, transform.z)
+          !this.searchResolved(
+            active,
+            memory,
+            knowledge,
+            personality,
+            transform.x,
+            transform.z,
+            planState.lastFailure,
+          )
         ) {
           return;
         }
 
+        if (active?.lastFailure !== null && active?.lastFailure !== undefined) {
+          clearFailedSeek(needsState);
+        } else {
+          clearInvalidLegacySeek(needsState);
+        }
+
         const steps =
           this.bootstrapSteps(goal, needsState) ??
-          this.stepsFor(goal, memory, knowledge, personality, transform.x, transform.z);
+          this.stepsFor(
+            goal,
+            memory,
+            knowledge,
+            personality,
+            transform.x,
+            transform.z,
+            active?.lastFailure ?? planState.lastFailure,
+          );
         planState.activePlan = {
           id: planState.nextPlanId++,
           goalKind: goal,
@@ -86,12 +110,17 @@ export class PlannerSystem implements SimulationSystem {
     personality: PersonalityComponent,
     fromX: number,
     fromZ: number,
+    failure: PlanFailure | null,
   ): boolean {
     const step = plan.steps[plan.currentStepIndex];
     if (step?.kind === 'search.water')
-      return nearestKnownWater(memory.spatial, fromX, fromZ) !== null;
+      return (
+        nearestKnownWater(memory.spatial, fromX, fromZ, (entry) =>
+          this.notFailedTarget(entry, failure),
+        ) !== null
+      );
     if (step?.kind === 'search.food')
-      return this.foodTarget(memory, knowledge, personality, fromX, fromZ) !== null;
+      return this.foodTarget(memory, knowledge, personality, fromX, fromZ, failure) !== null;
     return false;
   }
 
@@ -102,9 +131,12 @@ export class PlannerSystem implements SimulationSystem {
     personality: PersonalityComponent,
     fromX: number,
     fromZ: number,
+    failure: PlanFailure | null = null,
   ): readonly PlanStep[] {
     if (goal === 'survive.hydrate') {
-      const water = nearestKnownWater(memory.spatial, fromX, fromZ);
+      const water = nearestKnownWater(memory.spatial, fromX, fromZ, (entry) =>
+        this.notFailedTarget(entry, failure),
+      );
       return water === null
         ? [{ kind: 'search.water' }]
         : [
@@ -113,7 +145,7 @@ export class PlannerSystem implements SimulationSystem {
           ];
     }
     if (goal === 'survive.nourish') {
-      const food = this.foodTarget(memory, knowledge, personality, fromX, fromZ);
+      const food = this.foodTarget(memory, knowledge, personality, fromX, fromZ, failure);
       return food === null
         ? [{ kind: 'search.food' }]
         : [
@@ -140,23 +172,48 @@ export class PlannerSystem implements SimulationSystem {
     personality: PersonalityComponent,
     fromX: number,
     fromZ: number,
+    failure: PlanFailure | null = null,
   ) {
-    return selectKnownFoodTarget(memory.spatial, fromX, fromZ, (entry) => {
-      const nourishing = effectiveFoodProbability01(
-        knowledge,
-        entry.subjectConceptId,
-        FOOD_NOURISHING_PROPERTY,
-      );
-      const risk = effectiveFoodProbability01(
-        knowledge,
-        entry.subjectConceptId,
-        FOOD_ILLNESS_RISK_PROPERTY,
-      );
-      return (
-        (nourishing === null ? 1 : 0.75 + 0.5 * nourishing) *
-        (risk === null ? 1 : Math.max(0.1, 1 - risk * (0.5 + personality.caution)))
-      );
-    });
+    return selectKnownFoodTarget(
+      memory.spatial,
+      fromX,
+      fromZ,
+      (entry) => {
+        const nourishing = effectiveFoodProbability01(
+          knowledge,
+          entry.subjectConceptId,
+          FOOD_NOURISHING_PROPERTY,
+        );
+        const risk = effectiveFoodProbability01(
+          knowledge,
+          entry.subjectConceptId,
+          FOOD_ILLNESS_RISK_PROPERTY,
+        );
+        return (
+          (nourishing === null ? 1 : 0.75 + 0.5 * nourishing) *
+          (risk === null ? 1 : Math.max(0.1, 1 - risk * (0.5 + personality.caution)))
+        );
+      },
+      (entry) => this.notFailedTarget(entry, failure),
+    );
+  }
+
+  private notFailedTarget(entry: SpatialMemoryEntry, failure: PlanFailure | null): boolean {
+    const target = failure?.target;
+    const failedAtTick = failure?.tick;
+    if (target === undefined || failedAtTick === undefined || entry.lastSeenTick > failedAtTick)
+      return true;
+    if (target.kind === 'water') {
+      return entry.x !== target.rememberedX || entry.z !== target.rememberedZ;
+    }
+    const ref = entry.worldRef;
+    return (
+      ref === undefined ||
+      ref.type !== target.worldRef.type ||
+      ref.resourceId !== target.worldRef.resourceId ||
+      ref.ownerChunkKey !== target.worldRef.ownerChunkKey ||
+      ref.localId !== target.worldRef.localId
+    );
   }
 
   private bootstrapSteps(
@@ -170,36 +227,40 @@ export class PlannerSystem implements SimulationSystem {
       return null;
     if (state.action === 'rest' && goal !== 'survive.rest') return null;
     if (state.action === 'drink')
-      return [{ kind: 'drink', rememberedX: state.targetX ?? 0, rememberedZ: state.targetZ ?? 0 }];
+      return [{ kind: 'drink', rememberedX: state.targetX, rememberedZ: state.targetZ }];
     if (state.action === 'rest') return [{ kind: 'rest' }];
     if (
       (state.action === 'seekFood' || state.action === 'eat') &&
       state.resourceId &&
-      state.resourceOwnerChunkKey
+      state.resourceOwnerChunkKey &&
+      state.resourceLocalId !== null
     ) {
       const worldRef = {
         type: 'resource' as const,
         resourceId: state.resourceId,
         ownerChunkKey: state.resourceOwnerChunkKey,
-        localId: state.resourceLocalId ?? -1,
+        localId: state.resourceLocalId,
       };
-      const target = {
-        worldRef,
-        subjectConceptId: state.resourceConceptId,
-        rememberedX: state.targetX ?? 0,
-        rememberedZ: state.targetZ ?? 0,
-      };
-      return state.action === 'eat'
-        ? [{ kind: 'eat.resource', worldRef, subjectConceptId: state.resourceConceptId }]
-        : [
-            { kind: 'move.to_resource', ...target },
-            { kind: 'eat.resource', worldRef, subjectConceptId: state.resourceConceptId },
-          ];
+      if (state.action === 'eat') {
+        return [{ kind: 'eat.resource', worldRef, subjectConceptId: state.resourceConceptId }];
+      }
+      if (state.targetX !== null && state.targetZ !== null) {
+        return [
+          {
+            kind: 'move.to_resource',
+            worldRef,
+            subjectConceptId: state.resourceConceptId,
+            rememberedX: state.targetX,
+            rememberedZ: state.targetZ,
+          },
+          { kind: 'eat.resource', worldRef, subjectConceptId: state.resourceConceptId },
+        ];
+      }
     }
-    if (state.action === 'seekWater') {
+    if (state.action === 'seekWater' && state.targetX !== null && state.targetZ !== null) {
       return [
-        { kind: 'move.to_water', rememberedX: state.targetX ?? 0, rememberedZ: state.targetZ ?? 0 },
-        { kind: 'drink', rememberedX: state.targetX ?? 0, rememberedZ: state.targetZ ?? 0 },
+        { kind: 'move.to_water', rememberedX: state.targetX, rememberedZ: state.targetZ },
+        { kind: 'drink', rememberedX: state.targetX, rememberedZ: state.targetZ },
       ];
     }
     return goal === 'survive.nourish' ? [{ kind: 'search.food' }] : null;
@@ -219,4 +280,36 @@ export class PlannerSystem implements SimulationSystem {
 
 function isAtomic(state: NeedsStateComponent | undefined): boolean {
   return state?.action === 'drink' || state?.action === 'eat' || state?.action === 'rest';
+}
+
+function clearFailedSeek(state: NeedsStateComponent | undefined): void {
+  if (state?.action !== 'seekWater' && state?.action !== 'seekFood') return;
+  clearSeek(state);
+}
+
+function clearInvalidLegacySeek(state: NeedsStateComponent | undefined): void {
+  if (state?.action === 'seekWater' && (state.targetX === null || state.targetZ === null)) {
+    clearSeek(state);
+    return;
+  }
+  if (
+    state?.action === 'seekFood' &&
+    (state.targetX === null ||
+      state.targetZ === null ||
+      state.resourceId === null ||
+      state.resourceOwnerChunkKey === null ||
+      state.resourceLocalId === null)
+  ) {
+    clearSeek(state);
+  }
+}
+
+function clearSeek(state: NeedsStateComponent): void {
+  state.action = 'none';
+  state.targetX = null;
+  state.targetZ = null;
+  state.resourceId = null;
+  state.resourceOwnerChunkKey = null;
+  state.resourceLocalId = null;
+  state.resourceConceptId = null;
 }

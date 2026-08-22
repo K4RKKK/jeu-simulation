@@ -423,7 +423,7 @@ function fnv1aHashState(state: CanonicalState): string {
       const steps = active?.steps
         .map((step) => {
           if (step.kind === 'move.to_water' || step.kind === 'drink')
-            return `${step.kind}:${q(step.rememberedX)}:${q(step.rememberedZ)}`;
+            return `${step.kind}:${step.rememberedX === null ? 'n' : q(step.rememberedX)}:${step.rememberedZ === null ? 'n' : q(step.rememberedZ)}`;
           if (step.kind === 'move.to_resource')
             return `${step.kind}:${step.worldRef.resourceId}:${step.worldRef.ownerChunkKey}:${step.worldRef.localId}:${step.subjectConceptId ?? 'n'}:${q(step.rememberedX)}:${q(step.rememberedZ)}`;
           if (step.kind === 'eat.resource')
@@ -431,8 +431,17 @@ function fnv1aHashState(state: CanonicalState): string {
           return step.kind;
         })
         .join(';');
-      const failure = (value: PlanFailure | null) =>
-        value === null ? 'n' : `${value.stepIndex}:${value.reason}:${value.tick}`;
+      const failure = (value: PlanFailure | null) => {
+        if (value === null) return 'n';
+        const target = value.target;
+        const encodedTarget =
+          target === undefined
+            ? 'n'
+            : target.kind === 'resource'
+              ? `r:${target.worldRef.resourceId}:${target.worldRef.ownerChunkKey}:${target.worldRef.localId}`
+              : `w:${q(target.rememberedX)}:${q(target.rememberedZ)}`;
+        return `${value.stepIndex}:${value.reason}:${value.tick}:${encodedTarget}`;
+      };
       write(
         `hp:${entity}:${humanPlan.nextPlanId}:${active?.id ?? 'n'}:${active?.goalKind ?? 'n'}:${active?.createdAtTick ?? 'n'}:${active?.currentStepIndex ?? 'n'}:${steps ?? 'n'}:${failure(active?.lastFailure ?? null)}:${failure(humanPlan.lastFailure)}`,
       );

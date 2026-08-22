@@ -127,4 +127,101 @@ describe('PlannerSystem', () => {
     expect(sim.entities.getComponentOrThrow(human, HumanPlan).activePlan?.id).toBe(before.id);
     sim.dispose();
   });
+
+  it('excludes an unreachable target until it is perceived again and selects an alternative', () => {
+    const sim = simulation();
+    const human = sim.humanIds()[0]!;
+    const memory = sim.entities.getComponentOrThrow(human, CognitiveMemory);
+    const failed = rememberedFood();
+    const alternative: SpatialMemoryEntry = {
+      ...rememberedFood(),
+      id: 3,
+      x: 40,
+      worldRef: {
+        type: 'resource',
+        resourceId: 'remembered:berry:b',
+        ownerChunkKey: '0:0',
+        localId: 3,
+      },
+    };
+    memory.spatial.push(failed, alternative);
+    sim.entities.getComponentOrThrow(human, HumanCognition).activeGoal = {
+      kind: 'survive.nourish',
+      startedAtTick: 0,
+    };
+    const plans = sim.entities.getComponentOrThrow(human, HumanPlan);
+    const failure = {
+      stepIndex: 0,
+      reason: 'target.unreachable' as const,
+      tick: 10,
+      target: { kind: 'resource' as const, worldRef: failed.worldRef! },
+    };
+    plans.activePlan = {
+      id: 0,
+      goalKind: 'survive.nourish',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [
+        {
+          kind: 'move.to_resource',
+          worldRef: failed.worldRef!,
+          subjectConceptId: failed.subjectConceptId ?? null,
+          rememberedX: failed.x,
+          rememberedZ: failed.z,
+        },
+      ],
+      lastFailure: failure,
+    };
+    plans.lastFailure = failure;
+
+    sim.start();
+    sim.step(10);
+    expect(plans.activePlan?.steps[0]).toMatchObject({
+      kind: 'move.to_resource',
+      worldRef: { resourceId: 'remembered:berry:b' },
+    });
+    sim.dispose();
+  });
+
+  it('searches instead of immediately retrying the only unreachable target', () => {
+    const sim = simulation();
+    const human = sim.humanIds()[0]!;
+    const failed = rememberedFood();
+    sim.entities.getComponentOrThrow(human, CognitiveMemory).spatial.push(failed);
+    sim.entities.getComponentOrThrow(human, HumanCognition).activeGoal = {
+      kind: 'survive.nourish',
+      startedAtTick: 0,
+    };
+    const plans = sim.entities.getComponentOrThrow(human, HumanPlan);
+    const failure = {
+      stepIndex: 0,
+      reason: 'target.unreachable' as const,
+      tick: 10,
+      target: { kind: 'resource' as const, worldRef: failed.worldRef! },
+    };
+    plans.activePlan = {
+      id: 0,
+      goalKind: 'survive.nourish',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [
+        {
+          kind: 'move.to_resource',
+          worldRef: failed.worldRef!,
+          subjectConceptId: failed.subjectConceptId ?? null,
+          rememberedX: failed.x,
+          rememberedZ: failed.z,
+        },
+      ],
+      lastFailure: failure,
+    };
+    plans.lastFailure = failure;
+
+    sim.start();
+    sim.step(10);
+    expect(plans.activePlan?.steps).toEqual([{ kind: 'search.food' }]);
+    sim.step(50);
+    expect(plans.activePlan?.steps).toEqual([{ kind: 'search.food' }]);
+    sim.dispose();
+  });
 });

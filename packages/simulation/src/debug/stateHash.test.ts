@@ -256,6 +256,27 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
     const before = hashWorldState(simulation);
     plan.activePlan.currentStepIndex = 1;
     expect(hashWorldState(simulation)).not.toBe(before);
+
+    plan.activePlan.lastFailure = {
+      stepIndex: 0,
+      reason: 'target.unreachable',
+      tick: 12,
+      target: {
+        kind: 'resource',
+        worldRef: { type: 'resource', resourceId: 'berry:1', ownerChunkKey: '0:0', localId: 1 },
+      },
+    };
+    const failedTargetHash = hashWorldState(simulation);
+    plan.activePlan.lastFailure = {
+      stepIndex: 0,
+      reason: 'target.unreachable',
+      tick: 12,
+      target: {
+        kind: 'resource',
+        worldRef: { type: 'resource', resourceId: 'berry:2', ownerChunkKey: '0:0', localId: 2 },
+      },
+    };
+    expect(hashWorldState(simulation)).not.toBe(failedTargetHash);
     simulation.dispose();
   });
 

@@ -15,6 +15,8 @@ import type {
   MovementComponent,
   NeedsComponent,
   NeedsStateComponent,
+  PlanFailureTarget,
+  PlanStep,
   TransformComponent,
 } from '../../components/index.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
@@ -28,6 +30,7 @@ import {
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
 import { goalForNeedsAction } from '../../cognition/goalModel.js';
+import { invalidateSpatialWorldRef } from '../../cognition/spatialMemoryModel.js';
 
 /**
  * Décide des actions vitales quand un besoin devient critique (CLAUDE.md règle 7 : il
@@ -84,6 +87,10 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         }
 
         if (state.action === 'seekWater' || state.action === 'seekFood') {
+          if (planState.activePlan?.lastFailure?.reason === 'target.unreachable') {
+            this.cancelSeek(state, movement);
+            return;
+          }
           if (
             cognition.activeGoal !== null &&
             cognition.activeGoal.kind !== goalForNeedsAction(state.action)
@@ -93,8 +100,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           }
           // En route : le MovementSystem s'occupe du reste.
           if (movement.targetX !== null || movement.targetZ !== null) return;
-          this.completeTravelStep(planState);
-          this.onArrival(ctx, entity, needs, state, activity, transform, planState);
+          this.onArrival(ctx, entity, needs, state, activity, transform, memory, planState);
           return;
         }
 
@@ -167,12 +173,12 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       );
       state.resourceId = step.worldRef.resourceId;
       state.resourceOwnerChunkKey = step.worldRef.ownerChunkKey;
-      state.resourceLocalId = null;
+      state.resourceLocalId = step.worldRef.localId;
       state.resourceConceptId = step.subjectConceptId;
     }
   }
 
-  private completeTravelStep(planState: HumanPlanComponent): void {
+  private advanceTravelStep(planState: HumanPlanComponent): void {
     const plan = planState.activePlan;
     if (
       plan !== null &&
@@ -187,10 +193,11 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     planState: HumanPlanComponent,
     reason: 'target.missing' | 'interaction.failed',
     tick: number,
+    target?: PlanFailureTarget,
   ): void {
     const plan = planState.activePlan;
     if (plan === null) return;
-    const failure = { stepIndex: plan.currentStepIndex, reason, tick } as const;
+    const failure = { stepIndex: plan.currentStepIndex, reason, tick, target } as const;
     plan.lastFailure = failure;
     planState.lastFailure = failure;
   }
@@ -214,13 +221,16 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state: NeedsStateComponent,
     activity: ActivityComponent,
     transform: TransformComponent,
+    memory: CognitiveMemoryComponent,
     planState: HumanPlanComponent,
   ): void {
+    const travelStep = this.currentTravelStep(planState);
+    const failureTarget = travelStep === undefined ? undefined : targetForTravelStep(travelStep);
     const targetX = state.targetX;
     const targetZ = state.targetZ;
     if (targetX === null || targetZ === null) {
       state.action = 'none';
-      this.recordPlanFailure(planState, 'interaction.failed', ctx.tick);
+      this.recordPlanFailure(planState, 'interaction.failed', ctx.tick, failureTarget);
       return;
     }
     // Arrivé ? Le MovementSystem pose la cible exacte, mais une petite marge protège des
@@ -228,9 +238,11 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     const arrived = distance2D(transform.x, transform.z, targetX, targetZ) <= 2.5;
     if (!arrived) {
       state.action = 'none';
-      this.recordPlanFailure(planState, 'interaction.failed', ctx.tick);
+      this.recordPlanFailure(planState, 'interaction.failed', ctx.tick, failureTarget);
       return;
     }
+
+    this.advanceTravelStep(planState);
 
     if (state.action === 'seekWater') {
       state.action = 'drink';
@@ -250,7 +262,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     // seekFood : la ressource peut avoir été cueillie par un autre entre-temps.
     if (state.resourceId && ctx.world.delta.isDepleted(state.resourceId)) {
       state.action = 'none';
-      this.recordPlanFailure(planState, 'target.missing', ctx.tick);
+      this.invalidateMissingTarget(memory, travelStep);
+      this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
       return;
     }
     // La toxicité n'est pas mémorisée : elle se lit sur la ressource elle-même, au moment
@@ -273,14 +286,16 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         // `localId` is only world truth. Resolve it at interaction time, not planning.
         if (state.resourceOwnerChunkKey === null) {
           state.action = 'none';
-          this.recordPlanFailure(planState, 'target.missing', ctx.tick);
+          this.invalidateMissingTarget(memory, travelStep);
+          this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
           return;
         }
       }
       const spawn = ctx.world.findResourceById(state.resourceId, state.resourceOwnerChunkKey);
       if (!spawn) {
         state.action = 'none';
-        this.recordPlanFailure(planState, 'target.missing', ctx.tick);
+        this.invalidateMissingTarget(memory, travelStep);
+        this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
         return;
       }
       state.resourceLocalId = spawn.localId;
@@ -306,7 +321,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       // sa relecture et ce point. Dans ce cas, aucun repas fantôme n'est accordé.
       if (interactiveResourceEntity === null) {
         state.action = 'none';
-        this.recordPlanFailure(planState, 'target.missing', ctx.tick);
+        this.invalidateMissingTarget(memory, travelStep);
+        this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
         return;
       }
     }
@@ -357,6 +373,21 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         return;
       }
       harvestInteractiveResource(ctx.entities, ctx.world, interactiveResourceEntity, ctx.tick);
+    }
+  }
+
+  private currentTravelStep(planState: HumanPlanComponent): PlanStep | undefined {
+    const plan = planState.activePlan;
+    const step = plan?.steps[plan.currentStepIndex];
+    return step?.kind === 'move.to_water' || step?.kind === 'move.to_resource' ? step : undefined;
+  }
+
+  private invalidateMissingTarget(
+    memory: CognitiveMemoryComponent,
+    step: PlanStep | undefined,
+  ): void {
+    if (step?.kind === 'move.to_resource') {
+      invalidateSpatialWorldRef(memory, step.worldRef);
     }
   }
 
@@ -536,6 +567,20 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     const seconds = clamp(missing / ratePerSecond, minSeconds, maxSeconds);
     return ctx.tick + Math.max(1, Math.ceil(seconds / ctx.config.time.gameSecondsPerTick));
   }
+}
+
+function targetForTravelStep(step: PlanStep): PlanFailureTarget | undefined {
+  if (step.kind === 'move.to_resource') {
+    return { kind: 'resource', worldRef: step.worldRef };
+  }
+  if (step.kind === 'move.to_water') {
+    return {
+      kind: 'water',
+      rememberedX: step.rememberedX,
+      rememberedZ: step.rememberedZ,
+    };
+  }
+  return undefined;
 }
 
 /**

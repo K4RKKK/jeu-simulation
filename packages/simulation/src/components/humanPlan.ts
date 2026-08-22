@@ -5,16 +5,25 @@ import { defineComponent } from '../core/componentType.js';
 export type PlanFailureReason =
   'target.missing' | 'target.unreachable' | 'interaction.failed' | 'goal.changed';
 
+export type PlanFailureTarget =
+  | { readonly kind: 'resource'; readonly worldRef: WorldRef }
+  | { readonly kind: 'water'; readonly rememberedX: number; readonly rememberedZ: number };
+
 export interface PlanFailure {
   readonly stepIndex: number;
   readonly reason: PlanFailureReason;
   readonly tick: number;
+  readonly target?: PlanFailureTarget;
 }
 
 export type PlanStep =
   | { readonly kind: 'search.water' }
   | { readonly kind: 'move.to_water'; readonly rememberedX: number; readonly rememberedZ: number }
-  | { readonly kind: 'drink'; readonly rememberedX: number; readonly rememberedZ: number }
+  | {
+      readonly kind: 'drink';
+      readonly rememberedX: number | null;
+      readonly rememberedZ: number | null;
+    }
   | { readonly kind: 'search.food' }
   | {
       readonly kind: 'move.to_resource';

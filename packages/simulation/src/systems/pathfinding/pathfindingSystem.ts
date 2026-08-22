@@ -1,7 +1,12 @@
 import { NavGrid, PathFindingService, type TileCoord } from '@civ/pathfinding';
 import type { EntityId } from '@civ/shared';
 import { Activity, HumanPlan, Movement, NeedsState, Transform } from '../../components/index.js';
-import type { ActivityComponent, MovementComponent } from '../../components/index.js';
+import type {
+  ActivityComponent,
+  MovementComponent,
+  PlanFailureTarget,
+  PlanStep,
+} from '../../components/index.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
 import { distance2D } from '../../core/math.js';
 import type { SimulationSystem, SystemUpdateContext } from '../../core/system.js';
@@ -174,6 +179,13 @@ export class PathfindingSystem implements SimulationSystem {
     const needsState = ctx.entities.getComponent(entity, NeedsState);
     if (needsState && (needsState.action === 'seekWater' || needsState.action === 'seekFood')) {
       needsState.pathFailedAtTick = ctx.tick + ctx.config.pathfinding.failureRetryTicks;
+      needsState.action = 'none';
+      needsState.targetX = null;
+      needsState.targetZ = null;
+      needsState.resourceId = null;
+      needsState.resourceOwnerChunkKey = null;
+      needsState.resourceLocalId = null;
+      needsState.resourceConceptId = null;
     }
     const planState = ctx.entities.getComponent(entity, HumanPlan);
     const plan = planState?.activePlan;
@@ -186,11 +198,26 @@ export class PathfindingSystem implements SimulationSystem {
         stepIndex: plan.currentStepIndex,
         reason: 'target.unreachable' as const,
         tick: ctx.tick,
+        target: failureTarget(plan.steps[plan.currentStepIndex]),
       };
       plan.lastFailure = failure;
       planState.lastFailure = failure;
     }
   }
+}
+
+function failureTarget(step: PlanStep | undefined): PlanFailureTarget | undefined {
+  if (step?.kind === 'move.to_resource') {
+    return { kind: 'resource', worldRef: step.worldRef };
+  }
+  if (step?.kind === 'move.to_water') {
+    return {
+      kind: 'water',
+      rememberedX: step.rememberedX,
+      rememberedZ: step.rememberedZ,
+    };
+  }
+  return undefined;
 }
 
 /**

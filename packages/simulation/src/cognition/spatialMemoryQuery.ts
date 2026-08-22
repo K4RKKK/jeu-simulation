@@ -13,11 +13,12 @@ export function nearestKnownWater(
   spatial: readonly SpatialMemoryEntry[],
   fromX: number,
   fromZ: number,
+  include: (entry: SpatialMemoryEntry) => boolean = () => true,
 ): SpatialMemoryEntry | null {
   let best: SpatialMemoryEntry | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const entry of spatial) {
-    if (entry.kind !== 'water') continue;
+    if (entry.kind !== 'water' || !include(entry)) continue;
     const candidateScore = score(entry, fromX, fromZ);
     if (candidateScore < bestScore) {
       best = entry;
@@ -36,11 +37,18 @@ export function selectKnownFoodTarget(
   fromX: number,
   fromZ: number,
   preference: (entry: SpatialMemoryEntry) => number = () => 1,
+  include: (entry: SpatialMemoryEntry) => boolean = () => true,
 ): SpatialMemoryEntry | null {
   let best: SpatialMemoryEntry | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const entry of spatial) {
-    if (entry.kind !== 'resource' || entry.foodCandidate !== true || !entry.worldRef) continue;
+    if (
+      entry.kind !== 'resource' ||
+      entry.foodCandidate !== true ||
+      !entry.worldRef ||
+      !include(entry)
+    )
+      continue;
     // Learned preference ranks plausible food but never makes it impossible to try.
     const candidateScore = score(entry, fromX, fromZ) / Math.max(0.1, preference(entry));
     if (candidateScore < bestScore) {

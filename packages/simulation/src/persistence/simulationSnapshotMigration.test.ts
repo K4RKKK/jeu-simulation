@@ -3,10 +3,13 @@ import {
   CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
+  HumanPlan,
   Needs,
   NeedsState,
 } from '../components/index.js';
+import type { NeedsStateComponent } from '../components/index.js';
 import { Simulation } from '../simulation.js';
+import { PlannerSystem } from '../systems/cognition/plannerSystem.js';
 import {
   migrateSnapshotV9ToV10,
   migrateSnapshotV10ToV11,
@@ -71,6 +74,39 @@ function asV14Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): Si
         ]),
       },
     },
+  };
+}
+
+function asV15Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
+  const { HumanPlan: _plans, ...components } = snapshot.entities.components;
+  return {
+    ...snapshot,
+    version: 15,
+    entities: { ...snapshot.entities, components },
+  };
+}
+
+function legacyNeedsState(
+  action: NeedsStateComponent['action'],
+  overrides: Partial<NeedsStateComponent>,
+): NeedsStateComponent {
+  return {
+    action,
+    targetX: null,
+    targetZ: null,
+    resourceId: null,
+    resourceOwnerChunkKey: null,
+    resourceLocalId: null,
+    resourceConceptId: null,
+    mealStartedTick: -1,
+    mealHungerBefore01: 0,
+    untilTick: 1_000,
+    mealMaxGain: 1,
+    poisoningUntilTick: -1,
+    poisoningToxicity01: 0,
+    currentMealCausedPoisoning: false,
+    pathFailedAtTick: -1,
+    ...overrides,
   };
 }
 
@@ -723,5 +759,91 @@ describe('migrateSnapshotV15ToV16', () => {
     expect(migrated.entities.components.HumanPlan).toEqual(
       v15.entities.ids.map((id) => [id, { nextPlanId: 0, activePlan: null, lastFailure: null }]),
     );
+  });
+
+  it('bootstraps coherent plans for legacy mid-actions without inventing coordinates', () => {
+    const cases: Array<{
+      action: NeedsStateComponent['action'];
+      state: Partial<NeedsStateComponent>;
+      expectedSteps: string[];
+      expectedDrinkTarget?: [number | null, number | null];
+    }> = [
+      {
+        action: 'seekFood',
+        state: {
+          targetX: 12,
+          targetZ: 18,
+          resourceId: 'berry:legacy',
+          resourceOwnerChunkKey: '0:0',
+          resourceLocalId: 7,
+          resourceConceptId: 'berry:red',
+        },
+        expectedSteps: ['move.to_resource', 'eat.resource'],
+      },
+      {
+        action: 'eat',
+        state: {
+          resourceId: 'berry:legacy',
+          resourceOwnerChunkKey: '0:0',
+          resourceLocalId: 7,
+          resourceConceptId: 'berry:red',
+        },
+        expectedSteps: ['eat.resource'],
+      },
+      {
+        action: 'seekWater',
+        state: { targetX: 6, targetZ: 9 },
+        expectedSteps: ['move.to_water', 'drink'],
+      },
+      {
+        action: 'drink',
+        state: { targetX: null, targetZ: null },
+        expectedSteps: ['drink'],
+        expectedDrinkTarget: [null, null],
+      },
+    ];
+
+    for (const [index, testCase] of cases.entries()) {
+      const seed = `migration-v15-mid-action-${index}`;
+      const source = makeSimulation(seed);
+      const human = source.humanIds()[0]!;
+      source.entities.addComponent(
+        human,
+        NeedsState,
+        legacyNeedsState(testCase.action, testCase.state),
+      );
+      const v15 = asV15Snapshot(source.captureSnapshot());
+      source.dispose();
+
+      const target = new Simulation({
+        seed,
+        population: 3,
+        config: { time: { gameSecondsPerTick: 1 } },
+        systems: [new PlannerSystem()],
+      });
+      target.restoreSnapshot(v15);
+      const restoredCognition = target.entities.getComponentOrThrow(human, HumanCognition);
+      restoredCognition.activeGoal = {
+        kind:
+          testCase.action === 'seekWater' || testCase.action === 'drink'
+            ? 'survive.hydrate'
+            : 'survive.nourish',
+        startedAtTick: target.clock.currentTick,
+      };
+      target.start();
+      target.step(5);
+
+      const plan = target.entities.getComponentOrThrow(human, HumanPlan).activePlan;
+      expect(plan?.steps.map((step) => step.kind)).toEqual(testCase.expectedSteps);
+      expect(target.entities.getComponentOrThrow(human, NeedsState).action).toBe(testCase.action);
+      if (testCase.expectedDrinkTarget !== undefined) {
+        expect(plan?.steps[0]).toMatchObject({
+          kind: 'drink',
+          rememberedX: testCase.expectedDrinkTarget[0],
+          rememberedZ: testCase.expectedDrinkTarget[1],
+        });
+      }
+      target.dispose();
+    }
   });
 });

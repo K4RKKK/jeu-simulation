@@ -5,6 +5,7 @@ import type {
 import { allocateMemoryId } from '../components/cognitiveMemory.js';
 import type { CognitionConfig } from '../config/simulationConfig.js';
 import type { Observation } from './observation.js';
+import type { WorldRef } from './worldRef.js';
 
 /**
  * Logique pure de la mémoire spatiale générique (CLAUDE.md règle 8 : testable sans ECS).
@@ -42,6 +43,23 @@ function sameSubject(a: SpatialMemoryEntry, b: Observation, cellM: number): bool
   const cellBx = Math.round(b.x / cellM);
   const cellBz = Math.round(b.z / cellM);
   return cellAx === cellBx && cellAz === cellBz;
+}
+
+/** Removes exactly the world object disproved by a direct observation at its remembered site. */
+export function invalidateSpatialWorldRef(
+  memory: CognitiveMemoryComponent,
+  worldRef: WorldRef,
+): boolean {
+  const index = memory.spatial.findIndex(
+    (entry) =>
+      entry.worldRef?.type === worldRef.type &&
+      entry.worldRef.resourceId === worldRef.resourceId &&
+      entry.worldRef.ownerChunkKey === worldRef.ownerChunkKey &&
+      entry.worldRef.localId === worldRef.localId,
+  );
+  if (index < 0) return false;
+  memory.spatial.splice(index, 1);
+  return true;
 }
 
 /**

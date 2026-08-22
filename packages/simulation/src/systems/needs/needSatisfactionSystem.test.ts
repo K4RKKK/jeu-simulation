@@ -13,7 +13,7 @@ import {
   Personality,
   Transform,
 } from '../../components/index.js';
-import type { CognitiveMemoryComponent } from '../../components/index.js';
+import type { CognitiveMemoryComponent, SpatialMemoryEntry } from '../../components/index.js';
 import { observeResource, observeShore } from '../../cognition/observationBuilder.js';
 import { rememberSpatial } from '../../cognition/spatialMemoryModel.js';
 import { Simulation } from '../../simulation.js';
@@ -86,6 +86,29 @@ function setNeeds(
 /** Semer la mémoire cognitive d'un humain : c'est le rôle de la perception en vrai. */
 function seedCognition(simulation: Simulation): CognitiveMemoryComponent {
   return simulation.entities.getComponentOrThrow(simulation.humanIds()[0]!, CognitiveMemory);
+}
+
+function rememberedFood(
+  resourceId: string,
+  localId: number,
+  x: number,
+  z: number,
+): SpatialMemoryEntry {
+  return {
+    id: localId,
+    kind: 'resource',
+    x,
+    z,
+    lastSeenTick: 0,
+    confidence01: 1,
+    precisionM: 0,
+    encodedConfidence01: 1,
+    encodedPrecisionM: 0,
+    source: 'directPerception',
+    subjectConceptId: 'berry:red',
+    foodCandidate: true,
+    worldRef: { type: 'resource', resourceId, ownerChunkKey: '0:0', localId },
+  };
 }
 
 /**
@@ -425,14 +448,24 @@ describe('NeedSatisfactionSystem', () => {
       steps: [
         {
           kind: 'move.to_resource',
-          worldRef: 'remembered:berry',
+          worldRef: {
+            type: 'resource',
+            resourceId: 'remembered:berry',
+            ownerChunkKey: '0:0',
+            localId: 1,
+          },
           subjectConceptId: null,
           rememberedX: transform.x,
           rememberedZ: transform.z,
         },
         {
           kind: 'eat.resource',
-          worldRef: 'remembered:berry',
+          worldRef: {
+            type: 'resource',
+            resourceId: 'remembered:berry',
+            ownerChunkKey: '0:0',
+            localId: 1,
+          },
           subjectConceptId: null,
         },
       ],
@@ -441,10 +474,131 @@ describe('NeedSatisfactionSystem', () => {
 
     simulation.step(5);
     expect(plan.activePlan?.lastFailure?.reason).toBe('target.missing');
+    expect(plan.activePlan?.currentStepIndex).toBe(1);
     expect(simulation.entities.getComponentOrThrow(entity, NeedsState).action).toBe('none');
 
     simulation.step(5);
     expect(plan.activePlan?.steps).toEqual([{ kind: 'search.food' }]);
+    simulation.dispose();
+  });
+
+  it('invalidates a stale remembered resource and replans to another known target', () => {
+    const simulation = needsSystems();
+    const entity = simulation.humanIds()[0]!;
+    const transform = simulation.entities.getComponentOrThrow(entity, Transform);
+    const memory = simulation.entities.getComponentOrThrow(entity, CognitiveMemory);
+    const missing = rememberedFood('missing:a', 101, transform.x, transform.z);
+    const alternative = rememberedFood('remembered:b', 102, transform.x + 30, transform.z);
+    memory.spatial.push(missing, alternative);
+    setNeeds(simulation, { hydration: 1, hunger: 0.05, energy: 1 });
+    simulation.start();
+
+    for (let i = 0; i < 30 && memory.spatial.includes(missing); i++) simulation.step(1);
+    expect(memory.spatial).not.toContain(missing);
+    expect(memory.spatial).toContain(alternative);
+
+    const plans = simulation.entities.getComponentOrThrow(entity, HumanPlan);
+    for (let i = 0; i < 30; i++) {
+      const step = plans.activePlan?.steps[0];
+      if (step?.kind === 'move.to_resource' && step.worldRef.resourceId === 'remembered:b') break;
+      simulation.step(1);
+    }
+    expect(plans.activePlan?.steps[0]).toMatchObject({
+      kind: 'move.to_resource',
+      worldRef: { resourceId: 'remembered:b' },
+    });
+    simulation.dispose();
+  });
+
+  it('does not advance a move step when its movement target vanishes before arrival', () => {
+    const simulation = needsSystems();
+    simulation.start();
+    const entity = simulation.humanIds()[0]!;
+    const transform = simulation.entities.getComponentOrThrow(entity, Transform);
+    const plan = simulation.entities.getComponentOrThrow(entity, HumanPlan);
+    simulation.entities.getComponentOrThrow(entity, HumanCognition).activeGoal = {
+      kind: 'survive.hydrate',
+      startedAtTick: 0,
+    };
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'seekWater',
+      targetX: transform.x + 100,
+      targetZ: transform.z + 100,
+      resourceId: null,
+      resourceOwnerChunkKey: null,
+      resourceLocalId: null,
+      resourceConceptId: null,
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    plan.activePlan = {
+      id: 0,
+      goalKind: 'survive.hydrate',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [
+        { kind: 'move.to_water', rememberedX: transform.x + 100, rememberedZ: transform.z + 100 },
+        { kind: 'drink', rememberedX: transform.x + 100, rememberedZ: transform.z + 100 },
+      ],
+      lastFailure: null,
+    };
+
+    simulation.step(5);
+    expect(plan.activePlan?.currentStepIndex).toBe(0);
+    expect(plan.activePlan?.lastFailure?.reason).toBe('interaction.failed');
+    simulation.dispose();
+  });
+
+  it('advances an arrived move step exactly once before drinking', () => {
+    const simulation = needsSystems();
+    simulation.start();
+    const entity = simulation.humanIds()[0]!;
+    const transform = simulation.entities.getComponentOrThrow(entity, Transform);
+    const plan = simulation.entities.getComponentOrThrow(entity, HumanPlan);
+    simulation.entities.getComponentOrThrow(entity, HumanCognition).activeGoal = {
+      kind: 'survive.hydrate',
+      startedAtTick: 0,
+    };
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'seekWater',
+      targetX: transform.x,
+      targetZ: transform.z,
+      resourceId: null,
+      resourceOwnerChunkKey: null,
+      resourceLocalId: null,
+      resourceConceptId: null,
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    plan.activePlan = {
+      id: 0,
+      goalKind: 'survive.hydrate',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [
+        { kind: 'move.to_water', rememberedX: transform.x, rememberedZ: transform.z },
+        { kind: 'drink', rememberedX: transform.x, rememberedZ: transform.z },
+      ],
+      lastFailure: null,
+    };
+
+    simulation.step(5);
+    expect(plan.activePlan?.currentStepIndex).toBe(1);
+    expect(simulation.entities.getComponentOrThrow(entity, NeedsState).action).toBe('drink');
+    simulation.step(5);
+    expect(plan.activePlan?.currentStepIndex).toBe(1);
     simulation.dispose();
   });
 
