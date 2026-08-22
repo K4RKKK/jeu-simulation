@@ -8,6 +8,7 @@ import { HumanSkills } from './humanSkills.js';
 import { InteractiveResource } from './interactiveResource.js';
 import { Memory } from './memory.js';
 import { Needs, NeedsState } from './needs.js';
+import { ObservableAction } from './observableAction.js';
 
 export {
   CognitiveKnowledge,
@@ -19,6 +20,7 @@ export {
   Memory,
   Needs,
   NeedsState,
+  ObservableAction,
 };
 export { allocateBeliefId, createEmptyCognitiveKnowledge } from './cognitiveKnowledge.js';
 export { allocateMemoryId, createEmptyCognitiveMemory } from './cognitiveMemory.js';
@@ -49,6 +51,7 @@ export type { HumanSkillsComponent, SkillKind, SkillState } from './humanSkills.
 export type { InteractiveResourceComponent } from './interactiveResource.js';
 export type { MemoryComponent } from './memory.js';
 export type { NeedsComponent, NeedsStateComponent } from './needs.js';
+export type { ObservableActionComponent, ObservableActionKind } from './observableAction.js';
 
 /**
  * Composants de la phase 1.

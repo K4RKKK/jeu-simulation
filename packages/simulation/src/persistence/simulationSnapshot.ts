@@ -12,6 +12,7 @@ import {
   Movement,
   Needs,
   NeedsState,
+  ObservableAction,
   Personality,
   Transform,
   createEmptyCognitiveKnowledge,
@@ -217,6 +218,10 @@ export const PERSISTED_COMPONENTS: readonly ComponentType<unknown>[] = [
   HumanCognition,
   HumanPlan,
   HumanSkills,
+  // Phase 3.8 — action publiquement observable pendant gather/eat. Persister plutôt que
+  // reconstruire évite un couplage inversé où `restoreSnapshot` devrait connaître la
+  // sémantique du couple `(Activity.kind, NeedsState.*)` pour recomposer l'action visible.
+  ObservableAction,
 ];
 
 /**

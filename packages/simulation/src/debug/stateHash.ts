@@ -8,6 +8,7 @@ import type {
   HumanPlanComponent,
   HumanSkillsComponent,
   LivedExperience,
+  ObservableActionComponent,
   PlanFailure,
   HumanComponent,
   MemoryComponent,
@@ -29,6 +30,7 @@ import {
   Movement,
   Needs,
   NeedsState,
+  ObservableAction,
   Personality,
   Transform,
 } from '../components/index.js';
@@ -77,6 +79,7 @@ interface CanonicalHuman {
   readonly cognition: HumanCognitionComponent | null;
   readonly humanPlan: HumanPlanComponent | null;
   readonly humanSkills: HumanSkillsComponent | null;
+  readonly observableAction: ObservableActionComponent | null;
 }
 
 /**
@@ -99,7 +102,10 @@ interface CanonicalHuman {
  * `Memory` (souvenirs et positions de scan), et depuis la Phase 3.1 : `CognitiveMemory`,
  * `CognitiveKnowledge`, `HumanCognition` — sans quoi deux croyances ou souvenirs
  * cognitifs différents pourraient produire le même hash, exactement le faux positif déjà
- * corrigé une fois pour l'ancien `Memory`.
+ * corrigé une fois pour l'ancien `Memory`. Depuis la Phase 3.8 : `ObservableAction`
+ * (projection publique de l'action en cours), et les champs de dédup ajoutés à chaque
+ * `SocialMemoryEntry` — deux mondes qui divergent uniquement par ce qu'un observateur a
+ * déjà vu ou par l'occurrence physique en cours doivent produire deux hashes distincts.
  *
  * **Volontairement exclus** : `Movement.waypoints`/`pathPendingFor`/`pathRequestId` — un
  * cache de calcul du `PathfindingSystem`, pas un état persisté (`restoreSnapshot` les
@@ -157,6 +163,7 @@ function canonicalStateFromSimulation(simulation: Simulation): CanonicalState {
       cognition: simulation.entities.getComponent(id, HumanCognition) ?? null,
       humanPlan: simulation.entities.getComponent(id, HumanPlan) ?? null,
       humanSkills: simulation.entities.getComponent(id, HumanSkills) ?? null,
+      observableAction: simulation.entities.getComponent(id, ObservableAction) ?? null,
     };
   });
 
@@ -188,6 +195,7 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
   const cognitionById = componentMap<HumanCognitionComponent>('HumanCognition');
   const humanPlanById = componentMap<HumanPlanComponent>('HumanPlan');
   const humanSkillsById = componentMap<HumanSkillsComponent>('HumanSkills');
+  const observableActionById = componentMap<ObservableActionComponent>('ObservableAction');
 
   const getOrThrow = <T>(map: Map<EntityId, T>, id: EntityId, name: string): T => {
     const value = map.get(id);
@@ -214,6 +222,7 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
       cognition: cognitionById.get(id) ?? null,
       humanPlan: humanPlanById.get(id) ?? null,
       humanSkills: humanSkillsById.get(id) ?? null,
+      observableAction: observableActionById.get(id) ?? null,
     }));
 
   return {
@@ -282,6 +291,7 @@ function fnv1aHashState(state: CanonicalState): string {
     cognition,
     humanPlan,
     humanSkills,
+    observableAction,
   } of state.humans) {
     write(
       [
@@ -480,6 +490,16 @@ function fnv1aHashState(state: CanonicalState): string {
         )
         .join(';');
       write(`hs:${entity}:${skills}`);
+    }
+
+    // Phase 3.8 — action publiquement observable pendant gather/eat. Deux mondes
+    // identiques par ailleurs mais dont un acteur porte deux `ObservableAction`
+    // différentes (concept perçu différent, ou action commencée à un tick différent)
+    // divergeront socialement au prochain passage de `SocialObservationSystem`.
+    if (observableAction) {
+      write(
+        `oa:${entity}:${observableAction.kind}:${observableAction.startedAtTick}:${observableAction.subjectConceptId ?? 'n'}`,
+      );
     }
   }
 
