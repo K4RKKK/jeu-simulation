@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Movement, Transform } from '../components/index.js';
+import { Movement, ObservableAction, Transform } from '../components/index.js';
 import { hashSnapshot, hashWorldState } from '../debug/stateHash.js';
 import { Simulation } from '../simulation.js';
 
@@ -275,6 +275,41 @@ describe('Simulation snapshot — round-trip immédiat', () => {
       // La cible elle-même reste : le système la redemandera proprement au prochain tick.
       expect(movement.targetX).not.toBeNull();
     }
+    source.dispose();
+    target.dispose();
+  });
+
+  // Phase 3.8 — ObservableAction est persisté : une sauvegarde prise pendant qu'un
+  // humain gather/mange doit préserver l'occurrence exacte au rechargement, sinon un
+  // observateur voisin verrait la « même » action comme deux occurrences distinctes.
+  it("préserve exactement l'ObservableAction en cours au rechargement (occurrence unique)", () => {
+    const source = makeSimulation('observable-mid-action', 4);
+    source.start();
+    const actor = source.humanIds()[0]!;
+    // On pose une action manuellement — pas besoin d'un vrai gather pour tester la
+    // persistance du composant lui-même.
+    source.entities.addComponent(actor, ObservableAction, {
+      kind: 'resource.gathering',
+      startedAtTick: 42,
+      subjectConceptId: 'berry:red',
+    });
+    const hashBefore = hashWorldState(source);
+
+    const snapshot = source.captureSnapshot();
+    const target = makeSimulation('observable-mid-action', 4);
+    target.restoreSnapshot(snapshot);
+
+    const restored = target.entities.getComponentOrThrow(actor, ObservableAction);
+    expect(restored).toEqual({
+      kind: 'resource.gathering',
+      startedAtTick: 42,
+      subjectConceptId: 'berry:red',
+    });
+    // Le hash total (qui inclut ObservableAction depuis 3.8) est identique : preuve
+    // que l'occurrence est bit-pour-bit préservée, y compris pour la dédup côté
+    // SocialMemory qui utilisera (kind, startedAtTick, subjectConceptId).
+    expect(hashWorldState(target)).toBe(hashBefore);
+    expect(hashSnapshot(snapshot)).toBe(hashBefore);
     source.dispose();
     target.dispose();
   });

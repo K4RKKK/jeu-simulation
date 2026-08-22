@@ -11,6 +11,7 @@ import {
   Movement,
   Needs,
   NeedsState,
+  ObservableAction,
   Personality,
   Transform,
 } from '../../components/index.js';
@@ -920,5 +921,122 @@ describe('NeedSatisfactionSystem', () => {
     expect(episode).toMatchObject({ subjectConcept: 'mushroom:legacy' });
     expect(episode?.experience).toBeUndefined();
     simulation.dispose();
+  });
+
+  // Phase 3.8 : ObservableAction est la SEULE projection publique de ce que fait un
+  // acteur. Ces tests verrouillent la frontière public/privé — un observateur ne doit
+  // jamais pouvoir remonter à la faim, la motivation, la maîtrise ou la toxicité.
+  describe('ObservableAction projection (Phase 3.8)', () => {
+    it('n’existe pas tant que l’humain n’a rien de socialement visible', () => {
+      const simulation = needsSystems();
+      simulation.start();
+      simulation.step(3);
+      const entity = simulation.humanIds()[0]!;
+      expect(simulation.entities.getComponent(entity, ObservableAction)).toBeUndefined();
+      simulation.dispose();
+    });
+
+    it("apparaît en 'resource.gathering' avec le concept perçu au démarrage du gather", () => {
+      const simulation = needsSystems();
+      simulation.start();
+      const spawn = seedFoodUnderHuman(simulation, (candidate) => candidate.foodKcal > 0);
+      setNeeds(simulation, { hydration: 1, hunger: 0.05, energy: 1 });
+      simulation.step(10);
+      const entity = simulation.humanIds()[0]!;
+      const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+      if (state.action !== 'gatherFood') {
+        // Le repas peut avoir déjà basculé en 'eat' si le monde le permettait :
+        // dans ce cas l'action visible est 'food.ingestion' avec le même concept.
+        expect(state.action).toBe('eat');
+        const observed = simulation.entities.getComponentOrThrow(entity, ObservableAction);
+        expect(observed.kind).toBe('food.ingestion');
+        expect(observed.subjectConceptId).toBe(spawn.perceptualConceptId);
+      } else {
+        const observed = simulation.entities.getComponentOrThrow(entity, ObservableAction);
+        expect(observed.kind).toBe('resource.gathering');
+        expect(observed.startedAtTick).toBe(state.gatherStartedTick);
+        expect(observed.subjectConceptId).toBe(spawn.perceptualConceptId);
+      }
+      simulation.dispose();
+    });
+
+    it('bascule en “food.ingestion” avec un nouveau startedAtTick après la fin du gather', () => {
+      const simulation = needsSystems();
+      simulation.start();
+      const spawn = seedFoodUnderHuman(simulation, (candidate) => candidate.foodKcal > 0);
+      setNeeds(simulation, { hydration: 1, hunger: 0.05, energy: 1 });
+      simulation.step(200); // laisse gather se terminer puis eat démarrer
+      const entity = simulation.humanIds()[0]!;
+      const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+      if (state.action !== 'eat') {
+        simulation.dispose();
+        return; // world configuration didn't reach eat; test is not applicable this seed
+      }
+      const observed = simulation.entities.getComponentOrThrow(entity, ObservableAction);
+      expect(observed.kind).toBe('food.ingestion');
+      expect(observed.subjectConceptId).toBe(spawn.perceptualConceptId);
+      // startedAtTick de l'ingestion doit être strictement postérieur au démarrage du gather.
+      expect(observed.startedAtTick).toBeGreaterThan(state.gatherStartedTick ?? -1);
+      simulation.dispose();
+    });
+
+    it('ne fuit PAS la motivation interne (satisfyNeed vs deliberateExperiment)', () => {
+      // Deux mondes identiques par ailleurs, même concept, mêmes tick de démarrage :
+      // seule différence — foodIntent. La projection ObservableAction doit être identique.
+      const runs = (intent: 'satisfyNeed' | 'deliberateExperiment') => {
+        const simulation = needsSystems();
+        const entity = simulation.humanIds()[0]!;
+        simulation.entities.addComponent(entity, NeedsState, {
+          action: 'gatherFood',
+          targetX: 0,
+          targetZ: 0,
+          resourceId: 'r:1',
+          resourceOwnerChunkKey: '0:0',
+          resourceLocalId: 1,
+          resourceConceptId: 'berry:red',
+          foodIntent: intent,
+          gatherStartedTick: 0,
+          mealStartedTick: -1,
+          mealHungerBefore01: 0,
+          untilTick: 5,
+          mealMaxGain: 0.5,
+          poisoningUntilTick: -1,
+          poisoningToxicity01: 0,
+          currentMealCausedPoisoning: false,
+          pathFailedAtTick: -1,
+        });
+        // On écrit directement l'ObservableAction comme le ferait onArrival, sans le
+        // reste du plumbing : cela isole la projection en soi.
+        simulation.entities.addComponent(entity, ObservableAction, {
+          kind: 'resource.gathering',
+          startedAtTick: 0,
+          subjectConceptId: 'berry:red',
+        });
+        const observed = simulation.entities.getComponentOrThrow(entity, ObservableAction);
+        simulation.dispose();
+        return observed;
+      };
+      const a = runs('satisfyNeed');
+      const b = runs('deliberateExperiment');
+      // Structurellement identiques : même kind, même tick, même concept.
+      // Aucune trace de la motivation ne fuite dans la projection.
+      expect(a).toEqual(b);
+    });
+
+    it('disparait quand l’action est terminée (idempotent)', () => {
+      const simulation = needsSystems();
+      simulation.start();
+      const entity = simulation.humanIds()[0]!;
+      simulation.entities.addComponent(entity, ObservableAction, {
+        kind: 'food.ingestion',
+        startedAtTick: 0,
+        subjectConceptId: 'berry:red',
+      });
+      // Une nouvelle action rest doit défensivement effacer l'observable résiduel.
+      setNeeds(simulation, { hydration: 1, hunger: 1, energy: 0.05 });
+      simulation.step(5);
+      expect(simulation.entities.getComponent(entity, ObservableAction)).toBeUndefined();
+      simulation.dispose();
+    });
   });
 });

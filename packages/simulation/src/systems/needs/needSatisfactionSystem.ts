@@ -7,6 +7,7 @@ import {
   Movement,
   Needs,
   NeedsState,
+  ObservableAction,
   Transform,
 } from '../../components/index.js';
 import type {
@@ -17,6 +18,7 @@ import type {
   MovementComponent,
   NeedsComponent,
   NeedsStateComponent,
+  ObservableActionKind,
   PlanFailureTarget,
   PlanStep,
   TransformComponent,
@@ -107,14 +109,14 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
         if (state.action === 'seekWater' || state.action === 'seekFood') {
           if (planState.activePlan?.lastFailure?.reason === 'target.unreachable') {
-            this.cancelSeek(state, movement);
+            this.cancelSeek(ctx, entity, state, movement);
             return;
           }
           if (
             cognition.activeGoal !== null &&
             cognition.activeGoal.kind !== goalForNeedsAction(state.action, state.foodIntent)
           ) {
-            this.cancelSeek(state, movement);
+            this.cancelSeek(ctx, entity, state, movement);
             return;
           }
           // En route : le MovementSystem s'occupe du reste.
@@ -163,7 +165,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     )
       return;
     if (step.kind === 'rest') {
-      this.startRest(ctx, needs, state, activity);
+      this.startRest(ctx, entity, needs, state, activity);
       return;
     }
 
@@ -230,7 +232,12 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     planState.lastFailure = failure;
   }
 
-  private cancelSeek(state: NeedsStateComponent, movement: MovementComponent): void {
+  private cancelSeek(
+    ctx: SystemUpdateContext,
+    entity: EntityId,
+    state: NeedsStateComponent,
+    movement: MovementComponent,
+  ): void {
     this.clearAction(state);
     state.targetX = null;
     state.targetZ = null;
@@ -240,6 +247,10 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceConceptId = null;
     movement.targetX = null;
     movement.targetZ = null;
+    // Défensif : `ObservableAction` ne devrait jamais exister pendant seekFood/seekWater
+    // (Phase 3.8 ne projette que gather/eat), mais le retrait est idempotent — un état
+    // corrompu venant d'un futur système ne fuiterait pas une action fantôme.
+    this.clearObservable(ctx, entity);
   }
 
   private clearAction(state: NeedsStateComponent): void {
@@ -341,6 +352,11 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity.kind = 'gather';
     activity.reason = 'manipule une ressource pour en détacher une portion';
     activity.startedAtTick = ctx.tick;
+    // Phase 3.8 : rend l'action visible aux autres humains. Ne contient QUE le concept
+    // perçu et le tick de démarrage — jamais la faim, la motivation, le kcal, la
+    // toxicité, la maîtrise ou le plan de l'acteur. La position est lue en temps réel
+    // depuis Transform par SocialObservationSystem, pas figée ici.
+    this.writeObservable(ctx, entity, 'resource.gathering', ctx.tick, state.resourceConceptId);
   }
 
   private finishGathering(
@@ -362,7 +378,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
     if (resourceId !== null) endResourceInteraction(ctx.entities, entity, resourceId);
     if (!result.committed) {
-      this.failGathering(ctx, state, activity, memory, planState);
+      this.failGathering(ctx, entity, state, activity, memory, planState);
       return;
     }
 
@@ -411,6 +427,11 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         ? 'goûte une ressource pour en découvrir les effets'
         : `mange pour apaiser sa faim (faim ${needs.hunger.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
+    // Nouvelle occurrence observable : la précédente (resource.gathering) est écrasée.
+    // subjectConceptId reste le même que pendant le gather ; conservé dans NeedsState
+    // même après disparition de la ResourceSpawn (test 22 du prompt : voir A manger
+    // berry:red doit fonctionner même si la dernière portion a été détachée).
+    this.writeObservable(ctx, entity, 'food.ingestion', ctx.tick, state.resourceConceptId);
 
     if (state.currentMealCausedPoisoning) {
       state.poisoningToxicity01 = result.foodToxicity01;
@@ -425,6 +446,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   private failGathering(
     ctx: SystemUpdateContext,
+    entity: EntityId,
     state: NeedsStateComponent,
     activity: ActivityComponent,
     memory: CognitiveMemoryComponent,
@@ -447,6 +469,9 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity.kind = 'idle';
     activity.reason = 'ne trouve plus la ressource à manipuler';
     activity.startedAtTick = ctx.tick;
+    // Le gather échoué n'est plus une action visible : les observateurs qui l'ont vue
+    // conservent leur souvenir, mais aucune nouvelle observation ne doit être écrite.
+    this.clearObservable(ctx, entity);
   }
 
   private resourceTarget(state: NeedsStateComponent): PlanFailureTarget | undefined {
@@ -485,6 +510,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   private startRest(
     ctx: SystemUpdateContext,
+    entity: EntityId,
     needs: NeedsComponent,
     state: NeedsStateComponent,
     activity: ActivityComponent,
@@ -508,6 +534,9 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     activity.kind = 'rest';
     activity.reason = `est épuisé (énergie ${needs.energy.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
+    // Rest n'est pas encore une action socialement observable (Phase 3.8 : gather/eat
+    // seulement). Retrait défensif d'un ObservableAction résiduel s'il existait.
+    this.clearObservable(ctx, entity);
   }
 
   private finishAction(
@@ -617,6 +646,9 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           ? `repu (a mangé)`
           : `reposé (énergie ${needs.energy.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
+    // Fin d'action : l'humain n'est plus socialement observable dans cette occurrence.
+    // Retrait idempotent — drink/rest ne portent aujourd'hui aucun ObservableAction.
+    this.clearObservable(ctx, entity);
     const plan = planState.activePlan;
     if (
       plan !== null &&
@@ -658,6 +690,37 @@ export class NeedSatisfactionSystem implements SimulationSystem {
   ): number {
     const seconds = clamp(missing / ratePerSecond, minSeconds, maxSeconds);
     return ctx.tick + Math.max(1, Math.ceil(seconds / ctx.config.time.gameSecondsPerTick));
+  }
+
+  /**
+   * Frontière publique/privée (Phase 3.8) : projette l'action en cours vers un composant
+   * qu'un autre humain a le droit de lire. N'ÉCRIT que ce qui est perceptible à
+   * distance — jamais la faim, la motivation, la valeur nutritionnelle, la maîtrise.
+   * Utiliser une nouvelle valeur `startedAtTick` à chaque appel garantit que deux
+   * occurrences consécutives (même acteur, même concept, même kind) produisent deux
+   * `(actorId, kind, startedAtTick, subjectConceptId)` distincts et ne se confondent
+   * jamais côté observateur.
+   */
+  private writeObservable(
+    ctx: SystemUpdateContext,
+    entity: EntityId,
+    kind: ObservableActionKind,
+    startedAtTick: number,
+    subjectConceptId: string | null,
+  ): void {
+    ctx.entities.addComponent(entity, ObservableAction, {
+      kind,
+      startedAtTick,
+      subjectConceptId,
+    });
+  }
+
+  /**
+   * Retire l'action observable si elle existait — idempotent. Un appel « défensif »
+   * (rest, cancelSeek) ne coûte rien quand aucun ObservableAction n'était présent.
+   */
+  private clearObservable(ctx: SystemUpdateContext, entity: EntityId): void {
+    ctx.entities.removeComponent(entity, ObservableAction);
   }
 }
 
