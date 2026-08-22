@@ -336,10 +336,16 @@ export class Simulation {
       snapshot.ecologyVersion !== undefined &&
       snapshot.configFingerprint === this.preCognitionConfigFingerprint() &&
       (rawSnapshot.version === 9 || rawSnapshot.version === 10);
+    const matchesPreGoalFingerprint =
+      snapshot.ecologyVersion !== undefined &&
+      snapshot.configFingerprint === this.preGoalConfigFingerprint() &&
+      rawSnapshot.version >= 11 &&
+      rawSnapshot.version <= 14;
     if (
       snapshot.configFingerprint !== currentFingerprint &&
       !matchesLegacyFingerprint &&
-      !matchesPreCognitionFingerprint
+      !matchesPreCognitionFingerprint &&
+      !matchesPreGoalFingerprint
     ) {
       throw new Error(
         `restoreSnapshot: configuration incompatible (empreinte snapshot "${snapshot.configFingerprint}", ` +
@@ -423,22 +429,44 @@ export class Simulation {
    *   l'écologie (`ecologyVersion` absent).
    */
   private currentConfigFingerprint(): string {
-    return this.computeBehaviorFingerprint({ includeEcology: true, includeCognition: true });
+    return this.computeBehaviorFingerprint({
+      includeEcology: true,
+      includeCognition: true,
+      includeGoals: true,
+    });
+  }
+
+  /** Exact v11-v14 formula, including their retired needs decision settings. */
+  private preGoalConfigFingerprint(): string {
+    return this.computeBehaviorFingerprint({
+      includeEcology: true,
+      includeCognition: true,
+      includeGoals: false,
+    });
   }
 
   /** Formule exacte utilisée par les sauvegardes v9 postérieures à l'écologie mais antérieures à la Phase 3 (cognition). */
   private preCognitionConfigFingerprint(): string {
-    return this.computeBehaviorFingerprint({ includeEcology: true, includeCognition: false });
+    return this.computeBehaviorFingerprint({
+      includeEcology: true,
+      includeCognition: false,
+      includeGoals: false,
+    });
   }
 
   /** Formule exacte utilisée par les sauvegardes v9 antérieures à l'écologie. */
   private legacyConfigFingerprint(): string {
-    return this.computeBehaviorFingerprint({ includeEcology: false, includeCognition: false });
+    return this.computeBehaviorFingerprint({
+      includeEcology: false,
+      includeCognition: false,
+      includeGoals: false,
+    });
   }
 
   private computeBehaviorFingerprint(options: {
     includeEcology: boolean;
     includeCognition: boolean;
+    includeGoals: boolean;
   }): string {
     const {
       time,
@@ -453,12 +481,26 @@ export class Simulation {
       pathfinding,
       scheduler,
     } = this.config;
+    const historicalNeeds = options.includeGoals
+      ? needs
+      : {
+          ...needs,
+          decision: {
+            epsilon: needs.decision.epsilon,
+            restWeight: needs.decision.restWeight,
+            drinkWeight: needs.decision.drinkWeight,
+            eatWeight: needs.decision.eatWeight,
+            exploreBaseWeight: needs.decision.exploreBaseWeight,
+            noMemoryPenalty: needs.decision.noMemoryPenalty,
+            recentPoisoningWindowSeconds: needs.decision.recentPoisoningWindowSeconds,
+          },
+        };
     const behavior = {
       time,
       environment,
       movement,
       wander,
-      needs,
+      needs: historicalNeeds,
       perception,
       pathfinding,
       scheduler,

@@ -16,17 +16,32 @@ export interface GoalCandidate {
   readonly factors: readonly DecisionFactor[];
 }
 
-export function goalForNeedsAction(action: string): GoalKind | null {
+export type NeedsActionExecution =
+  | { readonly goal: GoalKind | null; readonly mode: 'none' }
+  | { readonly goal: GoalKind; readonly mode: 'seek' | 'atomic' };
+
+/**
+ * Seeking is interruptible; consuming, drinking, and resting are atomic until their
+ * normal completion. This lets goal selection arbitrate travel without tearing down
+ * a resource interaction halfway through.
+ */
+export function executionForNeedsAction(action: string): NeedsActionExecution {
   switch (action) {
     case 'seekWater':
-    case 'drink':
-      return 'survive.hydrate';
+      return { goal: 'survive.hydrate', mode: 'seek' };
     case 'seekFood':
+      return { goal: 'survive.nourish', mode: 'seek' };
+    case 'drink':
+      return { goal: 'survive.hydrate', mode: 'atomic' };
     case 'eat':
-      return 'survive.nourish';
+      return { goal: 'survive.nourish', mode: 'atomic' };
     case 'rest':
-      return 'survive.rest';
+      return { goal: 'survive.rest', mode: 'atomic' };
     default:
-      return null;
+      return { goal: null, mode: 'none' };
   }
+}
+
+export function goalForNeedsAction(action: string): GoalKind | null {
+  return executionForNeedsAction(action).goal;
 }

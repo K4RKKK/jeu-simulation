@@ -156,6 +156,10 @@ export interface NeedsConfig {
     drinkWeight: number;
     eatWeight: number;
     exploreBaseWeight: number;
+    /** @deprecated Kept only to verify configuration fingerprints from snapshots v11-v14. */
+    noMemoryPenalty: number;
+    /** @deprecated Kept only to verify configuration fingerprints from snapshots v11-v14. */
+    recentPoisoningWindowSeconds: number;
     /** Ecart relatif requis avant de remplacer un but vital deja choisi. */
     goalSwitchMargin01: number;
     /** Duree minimale pendant laquelle un but vital garde la main. */
@@ -467,6 +471,8 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
       drinkWeight: 1.4,
       eatWeight: 0.8,
       exploreBaseWeight: 0.5,
+      noMemoryPenalty: 0.15,
+      recentPoisoningWindowSeconds: 1800,
       goalSwitchMargin01: 0.2,
       minimumGoalCommitmentSeconds: 20,
       urgentGoalOverrideMultiplier: 3,

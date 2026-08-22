@@ -271,6 +271,80 @@ describe('NeedSatisfactionSystem', () => {
     simulation.dispose();
   });
 
+  it('interrupts a food search for an urgent hydration goal and clears its target', () => {
+    const simulation = needsSystems();
+    const entity = simulation.humanIds()[0]!;
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
+    const movement = simulation.entities.getComponentOrThrow(entity, Movement);
+    cognition.activeGoal = { kind: 'survive.nourish', startedAtTick: 0 };
+    movement.targetX = 42;
+    movement.targetZ = 24;
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'seekFood',
+      targetX: 42,
+      targetZ: 24,
+      resourceId: 'food:target',
+      resourceOwnerChunkKey: '0:0',
+      resourceLocalId: 1,
+      resourceConceptId: 'food:target',
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    setNeeds(simulation, { hydration: 0.001, hunger: 0.05, energy: 1 });
+    simulation.start();
+    simulation.step(10);
+
+    const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    expect(cognition.activeGoal?.kind).toBe('survive.hydrate');
+    expect(state.action).toBe('none');
+    expect(state.resourceId).toBeNull();
+    expect(movement.targetX).toBeNull();
+    expect(movement.targetZ).toBeNull();
+    simulation.dispose();
+  });
+
+  it('keeps an in-progress search when the competing utility stays below hysteresis', () => {
+    const simulation = needsSystems();
+    const entity = simulation.humanIds()[0]!;
+    const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
+    const movement = simulation.entities.getComponentOrThrow(entity, Movement);
+    cognition.activeGoal = { kind: 'survive.hydrate', startedAtTick: 0 };
+    movement.targetX = 42;
+    movement.targetZ = 24;
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'seekWater',
+      targetX: 42,
+      targetZ: 24,
+      resourceId: null,
+      resourceOwnerChunkKey: null,
+      resourceLocalId: null,
+      resourceConceptId: null,
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    setNeeds(simulation, { hydration: 0.11, hunger: 0.115, energy: 1 });
+    simulation.start();
+    simulation.step(10);
+
+    expect(cognition.activeGoal?.kind).toBe('survive.hydrate');
+    expect(simulation.entities.getComponentOrThrow(entity, NeedsState).action).toBe('seekWater');
+    expect(movement.targetX).toBe(42);
+    expect(movement.targetZ).toBe(24);
+    simulation.dispose();
+  });
+
   it('drinks until the target or the maximum duration is reached, then stops', () => {
     const simulation = needsSystems();
     simulation.start();

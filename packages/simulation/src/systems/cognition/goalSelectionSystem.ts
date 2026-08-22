@@ -7,7 +7,7 @@ import {
   Personality,
 } from '../../components/index.js';
 import type { HumanCognitionComponent, NeedsComponent } from '../../components/index.js';
-import { goalForNeedsAction } from '../../cognition/goalModel.js';
+import { executionForNeedsAction } from '../../cognition/goalModel.js';
 import {
   buildGoalCandidates,
   candidateForKind,
@@ -27,10 +27,15 @@ export class GoalSelectionSystem implements SimulationSystem {
       [Needs, CognitiveMemory, CognitiveKnowledge, HumanCognition, Personality],
       (entity, needs, _memory, _knowledge, cognition, personality) => {
         const candidates = buildGoalCandidates(needs, personality, ctx.config.needs);
-        const executingGoal = goalForNeedsAction(
+        const execution = executionForNeedsAction(
           ctx.entities.getComponent(entity, NeedsState)?.action ?? 'none',
         );
-        const winner = this.select(candidates, needs, cognition, executingGoal, ctx.tick, ctx);
+        // v14 snapshots did not persist a structured active goal. Reconstruct the
+        // in-progress action before selecting, so an atomic meal cannot become explore.
+        if (cognition.activeGoal === null && execution.goal !== null) {
+          cognition.activeGoal = { kind: execution.goal, startedAtTick: ctx.tick };
+        }
+        const winner = this.select(candidates, needs, cognition, execution, ctx.tick, ctx);
         if (cognition.activeGoal === null || cognition.activeGoal.kind !== winner.kind) {
           cognition.activeGoal = { kind: winner.kind, startedAtTick: ctx.tick };
         }
@@ -46,14 +51,14 @@ export class GoalSelectionSystem implements SimulationSystem {
     candidates: readonly GoalCandidate[],
     needs: NeedsComponent,
     cognition: HumanCognitionComponent,
-    executingGoal: GoalKind | null,
+    execution: ReturnType<typeof executionForNeedsAction>,
     tick: number,
     ctx: SystemUpdateContext,
   ): GoalCandidate {
     const best = pickBestGoal(candidates);
     const active = cognition.activeGoal;
-    if (executingGoal !== null && executingGoal === active?.kind) {
-      return candidateForKind(candidates, executingGoal) ?? best;
+    if (execution.mode === 'atomic') {
+      return candidateForKind(candidates, execution.goal) ?? best;
     }
     if (active === null || active.kind === 'explore') return best;
     const current = candidateForKind(candidates, active.kind);
