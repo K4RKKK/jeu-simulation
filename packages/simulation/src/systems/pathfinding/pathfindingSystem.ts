@@ -186,6 +186,7 @@ export class PathfindingSystem implements SimulationSystem {
       needsState.resourceOwnerChunkKey = null;
       needsState.resourceLocalId = null;
       needsState.resourceConceptId = null;
+      needsState.foodIntent = null;
     }
     const planState = ctx.entities.getComponent(entity, HumanPlan);
     const plan = planState?.activePlan;

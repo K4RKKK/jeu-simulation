@@ -30,6 +30,7 @@ import {
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
 import { goalForNeedsAction } from '../../cognition/goalModel.js';
+import { motivationForFoodIntent } from '../../cognition/foodActionIntent.js';
 import { invalidateSpatialWorldRef } from '../../cognition/spatialMemoryModel.js';
 
 /**
@@ -71,6 +72,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
             resourceOwnerChunkKey: null,
             resourceLocalId: null,
             resourceConceptId: null,
+            foodIntent: null,
             mealStartedTick: -1,
             mealHungerBefore01: 0,
             untilTick: -1,
@@ -93,7 +95,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           }
           if (
             cognition.activeGoal !== null &&
-            cognition.activeGoal.kind !== goalForNeedsAction(state.action)
+            cognition.activeGoal.kind !== goalForNeedsAction(state.action, state.foodIntent)
           ) {
             this.cancelSeek(state, movement);
             return;
@@ -175,6 +177,8 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       state.resourceOwnerChunkKey = step.worldRef.ownerChunkKey;
       state.resourceLocalId = step.worldRef.localId;
       state.resourceConceptId = step.subjectConceptId;
+      const eatStep = plan?.steps[plan.currentStepIndex + 1];
+      state.foodIntent = eatStep?.kind === 'eat.resource' ? eatStep.intent : 'satisfyNeed';
     }
   }
 
@@ -203,7 +207,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
   }
 
   private cancelSeek(state: NeedsStateComponent, movement: MovementComponent): void {
-    state.action = 'none';
+    this.clearAction(state);
     state.targetX = null;
     state.targetZ = null;
     state.resourceId = null;
@@ -212,6 +216,11 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceConceptId = null;
     movement.targetX = null;
     movement.targetZ = null;
+  }
+
+  private clearAction(state: NeedsStateComponent): void {
+    state.action = 'none';
+    state.foodIntent = null;
   }
 
   private onArrival(
@@ -229,7 +238,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     const targetX = state.targetX;
     const targetZ = state.targetZ;
     if (targetX === null || targetZ === null) {
-      state.action = 'none';
+      this.clearAction(state);
       this.recordPlanFailure(planState, 'interaction.failed', ctx.tick, failureTarget);
       return;
     }
@@ -237,7 +246,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     // cas où la cible n'était pas atteignable au dernier mètre.
     const arrived = distance2D(transform.x, transform.z, targetX, targetZ) <= 2.5;
     if (!arrived) {
-      state.action = 'none';
+      this.clearAction(state);
       this.recordPlanFailure(planState, 'interaction.failed', ctx.tick, failureTarget);
       return;
     }
@@ -261,7 +270,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
     // seekFood : la ressource peut avoir été cueillie par un autre entre-temps.
     if (state.resourceId && ctx.world.delta.isDepleted(state.resourceId)) {
-      state.action = 'none';
+      this.clearAction(state);
       this.invalidateMissingTarget(memory, travelStep);
       this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
       return;
@@ -285,7 +294,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         // peut pas diffuser sa modification. On abandonne le plan avant la promotion.
         // `localId` is only world truth. Resolve it at interaction time, not planning.
         if (state.resourceOwnerChunkKey === null) {
-          state.action = 'none';
+          this.clearAction(state);
           this.invalidateMissingTarget(memory, travelStep);
           this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
           return;
@@ -293,7 +302,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       }
       const spawn = ctx.world.findResourceById(state.resourceId, state.resourceOwnerChunkKey);
       if (!spawn) {
-        state.action = 'none';
+        this.clearAction(state);
         this.invalidateMissingTarget(memory, travelStep);
         this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
         return;
@@ -320,7 +329,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       // La promotion peut échouer si un autre acteur a épuisé la ressource entre
       // sa relecture et ce point. Dans ce cas, aucun repas fantôme n'est accordé.
       if (interactiveResourceEntity === null) {
-        state.action = 'none';
+        this.clearAction(state);
         this.invalidateMissingTarget(memory, travelStep);
         this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
         return;
@@ -344,7 +353,10 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       ctx.config.needs.hunger.maxEatSeconds,
     );
     activity.kind = 'eat';
-    activity.reason = `mange pour apaiser sa faim (faim ${needs.hunger.toFixed(2)})`;
+    activity.reason =
+      state.foodIntent === 'deliberateExperiment'
+        ? 'goûte une ressource pour en découvrir les effets'
+        : `mange pour apaiser sa faim (faim ${needs.hunger.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
     // La toxicité réelle n'est révélée qu'à l'ingestion : les symptômes commencent
     // maintenant, puis la fin du repas mettra à jour une croyance sur son apparence.
@@ -369,7 +381,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       if (interactiveResourceEntity === null) {
         // Garde structurelle : toutes les ressources ciblées doivent avoir été
         // promues plus haut avant une modification.
-        state.action = 'none';
+        this.clearAction(state);
         return;
       }
       harvestInteractiveResource(ctx.entities, ctx.world, interactiveResourceEntity, ctx.tick);
@@ -405,6 +417,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
     state.resourceConceptId = null;
+    state.foodIntent = null;
     state.untilTick = this.durationEndTick(
       ctx,
       config.restTarget - needs.energy,
@@ -476,6 +489,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
                 experience: {
                   kind: 'food.ingestion' as const,
                   subjectConceptId: conceptId,
+                  motivation: motivationForFoodIntent(state.foodIntent ?? 'satisfyNeed'),
                   actionTick: state.mealStartedTick,
                   outcomeTick: ctx.tick,
                   hungerBefore01: state.mealHungerBefore01,
@@ -513,6 +527,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
     state.resourceConceptId = null;
+    state.foodIntent = null;
     state.mealStartedTick = -1;
     state.mealHungerBefore01 = 0;
     state.currentMealCausedPoisoning = false;

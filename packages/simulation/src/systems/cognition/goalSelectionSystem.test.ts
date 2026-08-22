@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HumanCognition, Needs, Personality } from '../../components/index.js';
+import { HumanCognition, Needs, NeedsState, Personality } from '../../components/index.js';
 import { Simulation } from '../../simulation.js';
 import { GoalSelectionSystem } from './goalSelectionSystem.js';
 
@@ -78,5 +78,43 @@ describe('GoalSelectionSystem', () => {
       'explore',
     );
     sim.dispose();
+  });
+
+  it('interrupts experimental travel for a vital need but keeps experimental eating atomic', () => {
+    for (const [action, expected] of [
+      ['seekFood', 'survive.hydrate'],
+      ['eat', 'explore'],
+    ] as const) {
+      const sim = simulation();
+      const human = sim.humanIds()[0]!;
+      sim.entities.getComponentOrThrow(human, HumanCognition).activeGoal = {
+        kind: 'explore',
+        startedAtTick: 0,
+      };
+      sim.entities.addComponent(human, NeedsState, {
+        action,
+        targetX: 10,
+        targetZ: 10,
+        resourceId: 'berry:experiment',
+        resourceOwnerChunkKey: '0:0',
+        resourceLocalId: 1,
+        resourceConceptId: 'berry:red',
+        foodIntent: 'deliberateExperiment',
+        mealStartedTick: action === 'eat' ? 1 : -1,
+        mealHungerBefore01: 0.8,
+        untilTick: 100,
+        mealMaxGain: 0.1,
+        poisoningUntilTick: -1,
+        poisoningToxicity01: 0,
+        currentMealCausedPoisoning: false,
+        pathFailedAtTick: -1,
+      });
+      sim.start();
+      select(sim, { hydration: 0.01, hunger: 1, energy: 1 });
+      expect(sim.entities.getComponentOrThrow(human, HumanCognition).activeGoal?.kind).toBe(
+        expected,
+      );
+      sim.dispose();
+    }
   });
 });

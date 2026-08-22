@@ -27,6 +27,7 @@ import {
   migrateSnapshotV13ToV14,
   migrateSnapshotV14ToV15,
   migrateSnapshotV15ToV16,
+  migrateSnapshotV16ToV17,
   restoreEntities,
   type SimulationSnapshot,
 } from './persistence/simulationSnapshot.js';
@@ -311,6 +312,7 @@ export class Simulation {
     if (snapshot.version === 13) snapshot = migrateSnapshotV13ToV14(snapshot);
     if (snapshot.version === 14) snapshot = migrateSnapshotV14ToV15(snapshot);
     if (snapshot.version === 15) snapshot = migrateSnapshotV15ToV16(snapshot);
+    if (snapshot.version === 16) snapshot = migrateSnapshotV16ToV17(snapshot);
     if (snapshot.version !== SIMULATION_SNAPSHOT_VERSION) {
       throw new Error(
         `restoreSnapshot: version ${snapshot.version} incompatible avec ${SIMULATION_SNAPSHOT_VERSION}`,
@@ -344,11 +346,16 @@ export class Simulation {
       snapshot.configFingerprint === this.preGoalConfigFingerprint() &&
       rawSnapshot.version >= 11 &&
       rawSnapshot.version <= 14;
+    const matchesPreExperimentationFingerprint =
+      snapshot.ecologyVersion !== undefined &&
+      snapshot.configFingerprint === this.preExperimentationConfigFingerprint() &&
+      (rawSnapshot.version === 15 || rawSnapshot.version === 16);
     if (
       snapshot.configFingerprint !== currentFingerprint &&
       !matchesLegacyFingerprint &&
       !matchesPreCognitionFingerprint &&
-      !matchesPreGoalFingerprint
+      !matchesPreGoalFingerprint &&
+      !matchesPreExperimentationFingerprint
     ) {
       throw new Error(
         `restoreSnapshot: configuration incompatible (empreinte snapshot "${snapshot.configFingerprint}", ` +
@@ -436,6 +443,17 @@ export class Simulation {
       includeEcology: true,
       includeCognition: true,
       includeGoals: true,
+      includeExperimentation: true,
+    });
+  }
+
+  /** Exact v15-v16 formula, before cognition.experimentation existed. */
+  private preExperimentationConfigFingerprint(): string {
+    return this.computeBehaviorFingerprint({
+      includeEcology: true,
+      includeCognition: true,
+      includeGoals: true,
+      includeExperimentation: false,
     });
   }
 
@@ -445,6 +463,7 @@ export class Simulation {
       includeEcology: true,
       includeCognition: true,
       includeGoals: false,
+      includeExperimentation: false,
     });
   }
 
@@ -454,6 +473,7 @@ export class Simulation {
       includeEcology: true,
       includeCognition: false,
       includeGoals: false,
+      includeExperimentation: false,
     });
   }
 
@@ -463,6 +483,7 @@ export class Simulation {
       includeEcology: false,
       includeCognition: false,
       includeGoals: false,
+      includeExperimentation: false,
     });
   }
 
@@ -470,6 +491,7 @@ export class Simulation {
     includeEcology: boolean;
     includeCognition: boolean;
     includeGoals: boolean;
+    includeExperimentation: boolean;
   }): string {
     const {
       time,
@@ -511,7 +533,13 @@ export class Simulation {
     const simulation = {
       ...behavior,
       ...(options.includeEcology ? { weather, ecology } : {}),
-      ...(options.includeCognition ? { cognition } : {}),
+      ...(options.includeCognition
+        ? {
+            cognition: options.includeExperimentation
+              ? cognition
+              : (({ experimentation: _experimentation, ...legacy }) => legacy)(cognition),
+          }
+        : {}),
     };
     return computeConfigFingerprint(
       { simulation, generation: this.world.generator.fingerprintSource },

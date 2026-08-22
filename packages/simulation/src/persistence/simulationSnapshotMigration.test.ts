@@ -18,6 +18,7 @@ import {
   migrateSnapshotV13ToV14,
   migrateSnapshotV14ToV15,
   migrateSnapshotV15ToV16,
+  migrateSnapshotV16ToV17,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -86,6 +87,67 @@ function asV15Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
   };
 }
 
+/** Builds a v16-shaped save with the exact pre-experimentation fingerprint and schema. */
+function asV16Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): SimulationSnapshot {
+  const preExperimentationFingerprint = (
+    simulation as unknown as { preExperimentationConfigFingerprint(): string }
+  ).preExperimentationConfigFingerprint();
+  const plans = (snapshot.entities.components.HumanPlan ?? []) as unknown as [
+    number,
+    { activePlan?: { steps?: Record<string, unknown>[] } | null } & Record<string, unknown>,
+  ][];
+  const memories = (snapshot.entities.components.CognitiveMemory ?? []) as unknown as [
+    number,
+    { episodic?: Record<string, unknown>[] } & Record<string, unknown>,
+  ][];
+  const states = (snapshot.entities.components.NeedsState ?? []) as unknown as [
+    number,
+    Record<string, unknown>,
+  ][];
+  return {
+    ...snapshot,
+    version: 16,
+    configFingerprint: preExperimentationFingerprint,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        HumanPlan: plans.map(([id, plan]) => [
+          id,
+          {
+            ...plan,
+            activePlan:
+              plan.activePlan === null || plan.activePlan === undefined
+                ? (plan.activePlan ?? null)
+                : {
+                    ...plan.activePlan,
+                    steps: (plan.activePlan.steps ?? []).map(
+                      ({ intent: _intent, ...step }) => step,
+                    ),
+                  },
+          },
+        ]),
+        CognitiveMemory: memories.map(([id, memory]) => [
+          id,
+          {
+            ...memory,
+            episodic: (memory.episodic ?? []).map((episode) => {
+              const experience = episode.experience as Record<string, unknown> | undefined;
+              if (experience?.kind !== 'food.ingestion') return episode;
+              const { motivation: _motivation, ...legacyExperience } = experience;
+              return { ...episode, experience: legacyExperience };
+            }),
+          },
+        ]),
+        NeedsState: states.map(([id, state]) => {
+          const { foodIntent: _foodIntent, ...legacyState } = state;
+          return [id, legacyState];
+        }),
+      },
+    },
+  };
+}
+
 function legacyNeedsState(
   action: NeedsStateComponent['action'],
   overrides: Partial<NeedsStateComponent>,
@@ -98,6 +160,7 @@ function legacyNeedsState(
     resourceOwnerChunkKey: null,
     resourceLocalId: null,
     resourceConceptId: null,
+    foodIntent: null,
     mealStartedTick: -1,
     mealHungerBefore01: 0,
     untilTick: 1_000,
@@ -723,6 +786,7 @@ describe('migrateSnapshotV14ToV15', () => {
       resourceOwnerChunkKey: '0:0',
       resourceLocalId: 0,
       resourceConceptId: 'food:legacy',
+      foodIntent: 'satisfyNeed',
       mealStartedTick: 1,
       mealHungerBefore01: 0.05,
       untilTick: 1_000,
@@ -845,5 +909,149 @@ describe('migrateSnapshotV15ToV16', () => {
       }
       target.dispose();
     }
+  });
+});
+
+describe('migrateSnapshotV16ToV17', () => {
+  it('restores a genuine v16 snapshot with its historical configuration fingerprint', () => {
+    const source = makeSimulation('migration-v16-fingerprint');
+    const v16 = asV16Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = makeSimulation('migration-v16-fingerprint');
+    expect(() => target.restoreSnapshot(v16)).not.toThrow();
+    expect(target.captureSnapshot().version).toBe(17);
+    target.dispose();
+  });
+
+  it('rejects a genuine v16 snapshot when historical behavior configuration drifted', () => {
+    const source = new Simulation({
+      seed: 'migration-v16-fingerprint-drift',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        cognition: { spatialConfidenceHalfLifeSeconds: 999 },
+      },
+    });
+    const v16 = asV16Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = new Simulation({
+      seed: 'migration-v16-fingerprint-drift',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    expect(() => target.restoreSnapshot(v16)).toThrow('configuration incompatible');
+    target.dispose();
+  });
+
+  it('defaults legacy food plans, active meals, and experiences to need', () => {
+    const simulation = makeSimulation('migration-v16-v17');
+    const snapshot = simulation.captureSnapshot();
+    const human = simulation.humanIds()[0]!;
+    const memory = simulation.entities.getComponentOrThrow(human, CognitiveMemory);
+    const v16 = {
+      ...snapshot,
+      version: 16,
+      entities: {
+        ...snapshot.entities,
+        components: {
+          ...snapshot.entities.components,
+          HumanPlan: [
+            [
+              human,
+              {
+                nextPlanId: 1,
+                activePlan: {
+                  id: 0,
+                  goalKind: 'survive.nourish',
+                  createdAtTick: 0,
+                  currentStepIndex: 0,
+                  steps: [
+                    {
+                      kind: 'eat.resource',
+                      worldRef: {
+                        type: 'resource',
+                        resourceId: 'berry:legacy',
+                        ownerChunkKey: '0:0',
+                        localId: 1,
+                      },
+                      subjectConceptId: 'berry:red',
+                    },
+                  ],
+                  lastFailure: null,
+                },
+                lastFailure: null,
+              },
+            ],
+          ],
+          CognitiveMemory: [
+            [
+              human,
+              {
+                ...memory,
+                episodic: [
+                  {
+                    id: 0,
+                    tick: 2,
+                    eventType: 'food.ingestion',
+                    actors: [human],
+                    outcome: 'physiology.satiety_increased',
+                    emotionalStrength01: 0.2,
+                    experience: {
+                      kind: 'food.ingestion',
+                      subjectConceptId: 'berry:red',
+                      actionTick: 1,
+                      outcomeTick: 2,
+                      hungerBefore01: 0.2,
+                      hungerAfter01: 0.4,
+                      illnessObserved: false,
+                    },
+                  },
+                ],
+              },
+            ],
+          ],
+          NeedsState: [
+            [
+              human,
+              {
+                action: 'eat',
+                targetX: null,
+                targetZ: null,
+                resourceId: 'berry:legacy',
+                resourceOwnerChunkKey: '0:0',
+                resourceLocalId: 1,
+                resourceConceptId: 'berry:red',
+                mealStartedTick: 1,
+                mealHungerBefore01: 0.2,
+                untilTick: 10,
+                mealMaxGain: 0.2,
+                poisoningUntilTick: -1,
+                poisoningToxicity01: 0,
+                currentMealCausedPoisoning: false,
+                pathFailedAtTick: -1,
+              },
+            ],
+          ],
+        },
+      },
+    } as unknown as SimulationSnapshot;
+
+    const migrated = migrateSnapshotV16ToV17(v16);
+    const plan = (migrated.entities.components.HumanPlan ?? [])[0]?.[1] as {
+      activePlan: { steps: { intent?: string }[] };
+    };
+    const migratedMemory = (migrated.entities.components.CognitiveMemory ?? [])[0]?.[1] as {
+      episodic: { experience: { motivation?: string } }[];
+    };
+    const state = (migrated.entities.components.NeedsState ?? [])[0]?.[1] as {
+      foodIntent?: string;
+    };
+    expect(migrated.version).toBe(17);
+    expect(plan.activePlan.steps[0]?.intent).toBe('satisfyNeed');
+    expect(migratedMemory.episodic[0]?.experience.motivation).toBe('need');
+    expect(state.foodIntent).toBe('satisfyNeed');
+    simulation.dispose();
   });
 });

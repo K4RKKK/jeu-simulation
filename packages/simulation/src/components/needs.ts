@@ -1,4 +1,5 @@
 import { defineComponent } from '../core/componentType.js';
+import type { FoodActionIntent } from '../cognition/foodActionIntent.js';
 
 /* ---------------------------------------------------------------- */
 
@@ -44,6 +45,8 @@ export interface NeedsStateComponent {
   /** Adresse locale de la ressource dans son chunk propriétaire (recopiée depuis la mémoire). */
   resourceLocalId: number | null;
   resourceConceptId: string | null;
+  /** Motivation conservée pendant le trajet et l'ingestion atomique. */
+  foodIntent: FoodActionIntent | null;
   mealStartedTick: number;
   mealHungerBefore01: number;
   untilTick: number;

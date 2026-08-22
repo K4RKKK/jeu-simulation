@@ -1,5 +1,6 @@
 import type { EntityId } from '@civ/shared';
 import type { ConceptId, MemoryId } from '../cognition/ids.js';
+import type { FoodIngestionMotivation } from '../cognition/foodActionIntent.js';
 import type { ObservationSource } from '../cognition/observation.js';
 import type { WorldRef } from '../cognition/worldRef.js';
 import { defineComponent } from '../core/componentType.js';
@@ -66,6 +67,7 @@ export interface EpisodicMemoryEntry {
 export interface FoodIngestionExperience {
   readonly kind: 'food.ingestion';
   readonly subjectConceptId: ConceptId;
+  readonly motivation: FoodIngestionMotivation;
   readonly actionTick: number;
   readonly outcomeTick: number;
   readonly hungerBefore01: number;

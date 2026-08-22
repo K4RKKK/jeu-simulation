@@ -1,5 +1,7 @@
 import type { GoalKind } from '../cognition/goalModel.js';
+import type { FoodActionIntent } from '../cognition/foodActionIntent.js';
 import type { WorldRef } from '../cognition/worldRef.js';
+import type { DecisionReason } from './humanCognition.js';
 import { defineComponent } from '../core/componentType.js';
 
 export type PlanFailureReason =
@@ -36,6 +38,7 @@ export type PlanStep =
       readonly kind: 'eat.resource';
       readonly worldRef: WorldRef;
       readonly subjectConceptId: string | null;
+      readonly intent: FoodActionIntent;
     }
   | { readonly kind: 'rest' }
   | { readonly kind: 'explore' };
@@ -46,6 +49,8 @@ export interface ActivePlan {
   readonly createdAtTick: number;
   currentStepIndex: number;
   readonly steps: readonly PlanStep[];
+  /** Provenance durable du choix du plan, distincte du candidat recalculable. */
+  readonly selectionReason?: DecisionReason;
   lastFailure: PlanFailure | null;
 }
 

@@ -1,4 +1,5 @@
 import type { DecisionFactor } from '../components/humanCognition.js';
+import type { FoodActionIntent } from './foodActionIntent.js';
 
 /** Intentions atomiques, sans cible ni sequence d'actions. */
 export type GoalKind = 'survive.hydrate' | 'survive.nourish' | 'survive.rest' | 'explore';
@@ -25,16 +26,25 @@ export type NeedsActionExecution =
  * normal completion. This lets goal selection arbitrate travel without tearing down
  * a resource interaction halfway through.
  */
-export function executionForNeedsAction(action: string): NeedsActionExecution {
+export function executionForNeedsAction(
+  action: string,
+  foodIntent: FoodActionIntent | null = null,
+): NeedsActionExecution {
   switch (action) {
     case 'seekWater':
       return { goal: 'survive.hydrate', mode: 'seek' };
     case 'seekFood':
-      return { goal: 'survive.nourish', mode: 'seek' };
+      return {
+        goal: foodIntent === 'deliberateExperiment' ? 'explore' : 'survive.nourish',
+        mode: 'seek',
+      };
     case 'drink':
       return { goal: 'survive.hydrate', mode: 'atomic' };
     case 'eat':
-      return { goal: 'survive.nourish', mode: 'atomic' };
+      return {
+        goal: foodIntent === 'deliberateExperiment' ? 'explore' : 'survive.nourish',
+        mode: 'atomic',
+      };
     case 'rest':
       return { goal: 'survive.rest', mode: 'atomic' };
     default:
@@ -42,6 +52,9 @@ export function executionForNeedsAction(action: string): NeedsActionExecution {
   }
 }
 
-export function goalForNeedsAction(action: string): GoalKind | null {
-  return executionForNeedsAction(action).goal;
+export function goalForNeedsAction(
+  action: string,
+  foodIntent: FoodActionIntent | null = null,
+): GoalKind | null {
+  return executionForNeedsAction(action, foodIntent).goal;
 }

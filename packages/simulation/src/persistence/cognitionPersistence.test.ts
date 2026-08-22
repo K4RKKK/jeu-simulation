@@ -3,6 +3,8 @@ import {
   CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
+  HumanPlan,
+  NeedsState,
   allocateBeliefId,
   allocateMemoryId,
 } from '../components/index.js';
@@ -99,6 +101,90 @@ describe('persistance des composants cognitifs', () => {
     expect(restored.entities.getComponentOrThrow(human, CognitiveMemory)).toEqual(memory);
     expect(restored.entities.getComponentOrThrow(human, CognitiveKnowledge)).toEqual(knowledge);
     expect(restored.entities.getComponentOrThrow(human, HumanCognition)).toEqual(cognition);
+    restored.dispose();
+  });
+
+  it('preserves an experimental plan, active meal intent, and lived motivation', () => {
+    const source = makeSimulation('experiment-persistence');
+    const human = source.humanIds()[0]!;
+    const worldRef = {
+      type: 'resource' as const,
+      resourceId: 'berry:experiment',
+      ownerChunkKey: '0:0',
+      localId: 3,
+    };
+    const plan = source.entities.getComponentOrThrow(human, HumanPlan);
+    plan.activePlan = {
+      id: 4,
+      goalKind: 'explore',
+      createdAtTick: 1,
+      currentStepIndex: 1,
+      steps: [
+        {
+          kind: 'move.to_resource',
+          worldRef,
+          subjectConceptId: 'berry:red',
+          rememberedX: 4,
+          rememberedZ: 5,
+        },
+        {
+          kind: 'eat.resource',
+          worldRef,
+          subjectConceptId: 'berry:red',
+          intent: 'deliberateExperiment',
+        },
+      ],
+      lastFailure: null,
+    };
+    source.entities.addComponent(human, NeedsState, {
+      action: 'eat',
+      targetX: 4,
+      targetZ: 5,
+      resourceId: worldRef.resourceId,
+      resourceOwnerChunkKey: worldRef.ownerChunkKey,
+      resourceLocalId: worldRef.localId,
+      resourceConceptId: 'berry:red',
+      foodIntent: 'deliberateExperiment',
+      mealStartedTick: 1,
+      mealHungerBefore01: 0.7,
+      untilTick: 20,
+      mealMaxGain: 0.1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    source.entities.getComponentOrThrow(human, CognitiveMemory).episodic.push({
+      id: 0,
+      tick: 1,
+      eventType: 'food.ingestion',
+      actors: [human],
+      outcome: 'physiology.satiety_increased',
+      emotionalStrength01: 0.2,
+      experience: {
+        kind: 'food.ingestion',
+        subjectConceptId: 'berry:red',
+        motivation: 'deliberateExperiment',
+        actionTick: 0,
+        outcomeTick: 1,
+        hungerBefore01: 0.6,
+        hungerAfter01: 0.7,
+        illnessObserved: false,
+      },
+    });
+
+    const snapshot = source.captureSnapshot();
+    const restored = makeSimulation('experiment-persistence');
+    restored.restoreSnapshot(snapshot);
+    expect(restored.entities.getComponentOrThrow(human, HumanPlan)).toEqual(plan);
+    expect(restored.entities.getComponentOrThrow(human, NeedsState).foodIntent).toBe(
+      'deliberateExperiment',
+    );
+    expect(
+      restored.entities.getComponentOrThrow(human, CognitiveMemory).episodic[0]?.experience
+        ?.motivation,
+    ).toBe('deliberateExperiment');
+    source.dispose();
     restored.dispose();
   });
 });

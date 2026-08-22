@@ -17,7 +17,12 @@ function simulation(maxEpisodicEntries = 64): Simulation {
   });
 }
 
-function addIngestion(simulation: Simulation, humanId: number, illnessObserved: boolean): void {
+function addIngestion(
+  simulation: Simulation,
+  humanId: number,
+  illnessObserved: boolean,
+  motivation: 'need' | 'deliberateExperiment' = 'need',
+): void {
   const memory = simulation.entities.getComponentOrThrow(humanId, CognitiveMemory);
   rememberEpisodic(
     memory,
@@ -31,6 +36,7 @@ function addIngestion(simulation: Simulation, humanId: number, illnessObserved: 
       experience: {
         kind: 'food.ingestion',
         subjectConceptId: 'mushroom:brown:small',
+        motivation,
         actionTick: 0,
         outcomeTick: 1,
         hungerBefore01: 0.1,
@@ -59,6 +65,21 @@ describe('LearningSystem', () => {
     const before = JSON.stringify(knowledge.beliefs);
     world.step(60);
     expect(JSON.stringify(knowledge.beliefs)).toBe(before);
+    world.dispose();
+  });
+
+  it('learns identical evidence from need and deliberate experiment outcomes', () => {
+    const world = simulation();
+    const [needHuman, experimentHuman] = world.humanIds();
+    addIngestion(world, needHuman!, false, 'need');
+    addIngestion(world, experimentHuman!, false, 'deliberateExperiment');
+    world.start();
+    world.step(6);
+    const withoutIds = (human: number) =>
+      world.entities
+        .getComponentOrThrow(human, CognitiveKnowledge)
+        .beliefs.map(({ id: _id, ...belief }) => belief);
+    expect(withoutIds(experimentHuman!)).toEqual(withoutIds(needHuman!));
     world.dispose();
   });
 

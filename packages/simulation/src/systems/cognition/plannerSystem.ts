@@ -11,6 +11,7 @@ import {
 import type {
   CognitiveKnowledgeComponent,
   CognitiveMemoryComponent,
+  DecisionReason,
   HumanPlanComponent,
   NeedsStateComponent,
   PlanFailure,
@@ -25,6 +26,7 @@ import {
   effectiveFoodProbability01,
 } from '../../cognition/foodBeliefModel.js';
 import type { GoalKind } from '../../cognition/goalModel.js';
+import { selectFoodExperimentCandidate } from '../../cognition/experimentModel.js';
 import { nearestKnownWater, selectKnownFoodTarget } from '../../cognition/spatialMemoryQuery.js';
 import type { SystemFrequency } from '../../config/simulationConfig.js';
 import type { SimulationSystem, SystemUpdateContext } from '../../core/system.js';
@@ -71,6 +73,9 @@ export class PlannerSystem implements SimulationSystem {
             planState.lastFailure,
           )
         ) {
+          if (active.selectionReason !== undefined) {
+            cognition.decisionReason = active.selectionReason;
+          }
           return;
         }
 
@@ -80,23 +85,66 @@ export class PlannerSystem implements SimulationSystem {
           clearInvalidLegacySeek(needsState);
         }
 
-        const steps =
-          this.bootstrapSteps(goal, needsState) ??
-          this.stepsFor(
-            goal,
+        const failure = active?.lastFailure ?? planState.lastFailure;
+        let selectionReason: DecisionReason | undefined;
+        let steps = this.bootstrapSteps(goal, needsState);
+        if (steps === null && goal === 'explore') {
+          const experiment = selectFoodExperimentCandidate(
             memory,
             knowledge,
             personality,
             transform.x,
             transform.z,
-            active?.lastFailure ?? planState.lastFailure,
+            ctx.tick,
+            ctx.config.time.gameSecondsPerTick,
+            ctx.config.cognition.experimentation,
+            (entry) => this.notFailedTarget(entry, failure),
           );
+          if (
+            experiment !== null &&
+            experiment.score01 >= ctx.config.cognition.experimentation.minimumInterest01
+          ) {
+            steps = [
+              {
+                kind: 'move.to_resource',
+                worldRef: experiment.target,
+                subjectConceptId: experiment.subjectConceptId,
+                rememberedX: experiment.rememberedX,
+                rememberedZ: experiment.rememberedZ,
+              },
+              {
+                kind: 'eat.resource',
+                worldRef: experiment.target,
+                subjectConceptId: experiment.subjectConceptId,
+                intent: 'deliberateExperiment',
+              },
+            ];
+            selectionReason = {
+              code: 'experiment.select.food.try',
+              factors: [
+                { code: 'experiment.utility', value: experiment.score01 },
+                ...experiment.factors,
+              ],
+            };
+            cognition.decisionReason = selectionReason;
+          }
+        }
+        steps ??= this.stepsFor(
+          goal,
+          memory,
+          knowledge,
+          personality,
+          transform.x,
+          transform.z,
+          failure,
+        );
         planState.activePlan = {
           id: planState.nextPlanId++,
           goalKind: goal,
           createdAtTick: ctx.tick,
           currentStepIndex: 0,
           steps,
+          ...(selectionReason === undefined ? {} : { selectionReason }),
           lastFailure: null,
         };
       },
@@ -160,6 +208,7 @@ export class PlannerSystem implements SimulationSystem {
               kind: 'eat.resource',
               worldRef: food.worldRef!,
               subjectConceptId: food.subjectConceptId ?? null,
+              intent: 'satisfyNeed',
             },
           ];
     }
@@ -242,7 +291,14 @@ export class PlannerSystem implements SimulationSystem {
         localId: state.resourceLocalId,
       };
       if (state.action === 'eat') {
-        return [{ kind: 'eat.resource', worldRef, subjectConceptId: state.resourceConceptId }];
+        return [
+          {
+            kind: 'eat.resource',
+            worldRef,
+            subjectConceptId: state.resourceConceptId,
+            intent: state.foodIntent ?? 'satisfyNeed',
+          },
+        ];
       }
       if (state.targetX !== null && state.targetZ !== null) {
         return [
@@ -253,7 +309,12 @@ export class PlannerSystem implements SimulationSystem {
             rememberedX: state.targetX,
             rememberedZ: state.targetZ,
           },
-          { kind: 'eat.resource', worldRef, subjectConceptId: state.resourceConceptId },
+          {
+            kind: 'eat.resource',
+            worldRef,
+            subjectConceptId: state.resourceConceptId,
+            intent: state.foodIntent ?? 'satisfyNeed',
+          },
         ];
       }
     }
@@ -312,4 +373,5 @@ function clearSeek(state: NeedsStateComponent): void {
   state.resourceOwnerChunkKey = null;
   state.resourceLocalId = null;
   state.resourceConceptId = null;
+  state.foodIntent = null;
 }

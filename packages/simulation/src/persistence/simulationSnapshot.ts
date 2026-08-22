@@ -102,7 +102,8 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // v14 : Phase 3.3 - ingestion experiences are consolidated separately by LearningSystem.
 // The persisted watermark prevents loading a save from learning the same episode twice.
 // Legacy food.edible probabilities migrate to inverse food.illnessRisk probabilities.
-export const SIMULATION_SNAPSHOT_VERSION = 16;
+// v17 : voluntary food experiments persist plan intent and experienced motivation.
+export const SIMULATION_SNAPSHOT_VERSION = 17;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -562,6 +563,70 @@ export function migrateSnapshotV15ToV16(snapshot: SimulationSnapshot): Simulatio
       components: {
         ...snapshot.entities.components,
         HumanPlan: snapshot.entities.ids.map((id) => [id, createEmptyHumanPlan()]),
+      },
+    },
+  };
+}
+
+/** v16 -> v17 : food actions distinguish survival from deliberate experimentation. */
+export function migrateSnapshotV16ToV17(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 16) {
+    throw new Error(`migrateSnapshotV16ToV17: version ${snapshot.version} inattendue (16 requis)`);
+  }
+  type LegacyPlan = { activePlan?: { steps?: Record<string, unknown>[] } | null } & Record<
+    string,
+    unknown
+  >;
+  type LegacyMemory = { episodic?: Record<string, unknown>[] } & Record<string, unknown>;
+  type LegacyNeedsState = { action?: unknown } & Record<string, unknown>;
+  const components = snapshot.entities.components;
+  const plans = (components.HumanPlan ?? []) as unknown as [EntityId, LegacyPlan][];
+  const memories = (components.CognitiveMemory ?? []) as unknown as [EntityId, LegacyMemory][];
+  const needsStates = (components.NeedsState ?? []) as unknown as [EntityId, LegacyNeedsState][];
+  return {
+    ...snapshot,
+    version: 17,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        HumanPlan: plans.map(([id, plan]) => [
+          id,
+          {
+            ...plan,
+            activePlan:
+              plan.activePlan === null || plan.activePlan === undefined
+                ? (plan.activePlan ?? null)
+                : {
+                    ...plan.activePlan,
+                    steps: (plan.activePlan.steps ?? []).map((step) =>
+                      step.kind === 'eat.resource'
+                        ? { ...step, intent: step.intent ?? 'satisfyNeed' }
+                        : step,
+                    ),
+                  },
+          },
+        ]),
+        CognitiveMemory: memories.map(([id, memory]) => [
+          id,
+          {
+            ...memory,
+            episodic: (memory.episodic ?? []).map((episode) => {
+              const experience = episode.experience as Record<string, unknown> | undefined;
+              return experience?.kind === 'food.ingestion'
+                ? { ...episode, experience: { ...experience, motivation: 'need' } }
+                : episode;
+            }),
+          },
+        ]),
+        NeedsState: needsStates.map(([id, state]) => [
+          id,
+          {
+            ...state,
+            foodIntent:
+              state.action === 'seekFood' || state.action === 'eat' ? 'satisfyNeed' : null,
+          },
+        ]),
       },
     },
   };

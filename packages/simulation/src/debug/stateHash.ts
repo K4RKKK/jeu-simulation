@@ -324,6 +324,7 @@ function fnv1aHashState(state: CanonicalState): string {
         `ns:${entity}:${needsState.action}:${qOrNull(needsState.targetX)}:${qOrNull(needsState.targetZ)}:` +
           `${needsState.resourceId ?? 'n'}:${needsState.resourceOwnerChunkKey ?? 'n'}:` +
           `${needsState.resourceLocalId ?? 'n'}:${needsState.resourceConceptId ?? 'n'}:` +
+          `${needsState.foodIntent ?? 'n'}:` +
           `${needsState.mealStartedTick}:${q(needsState.mealHungerBefore01)}:` +
           `${needsState.untilTick}:${q(needsState.mealMaxGain)}:` +
           `${needsState.poisoningUntilTick}:${q(needsState.poisoningToxicity01)}:` +
@@ -370,7 +371,7 @@ function fnv1aHashState(state: CanonicalState): string {
             `${entry.id}:${entry.tick}:${entry.eventType}:${entry.actors.join(',')}:` +
             `${entry.subjectConcept ?? 'n'}:${entry.x === undefined ? 'n' : q(entry.x)}:` +
             `${entry.z === undefined ? 'n' : q(entry.z)}:${entry.outcome}:${q(entry.emotionalStrength01)}:` +
-            `${entry.experience === undefined ? 'n' : `${entry.experience.kind}:${entry.experience.subjectConceptId}:${entry.experience.actionTick}:${entry.experience.outcomeTick}:${q(entry.experience.hungerBefore01)}:${q(entry.experience.hungerAfter01)}:${entry.experience.illnessObserved ? 1 : 0}`}`,
+            `${entry.experience === undefined ? 'n' : `${entry.experience.kind}:${entry.experience.subjectConceptId}:${entry.experience.motivation}:${entry.experience.actionTick}:${entry.experience.outcomeTick}:${q(entry.experience.hungerBefore01)}:${q(entry.experience.hungerAfter01)}:${entry.experience.illnessObserved ? 1 : 0}`}`,
         )
         .join(';');
       const social = cognitiveMemory.social
@@ -427,10 +428,17 @@ function fnv1aHashState(state: CanonicalState): string {
           if (step.kind === 'move.to_resource')
             return `${step.kind}:${step.worldRef.resourceId}:${step.worldRef.ownerChunkKey}:${step.worldRef.localId}:${step.subjectConceptId ?? 'n'}:${q(step.rememberedX)}:${q(step.rememberedZ)}`;
           if (step.kind === 'eat.resource')
-            return `${step.kind}:${step.worldRef.resourceId}:${step.worldRef.ownerChunkKey}:${step.worldRef.localId}:${step.subjectConceptId ?? 'n'}`;
+            return `${step.kind}:${step.worldRef.resourceId}:${step.worldRef.ownerChunkKey}:${step.worldRef.localId}:${step.subjectConceptId ?? 'n'}:${step.intent}`;
           return step.kind;
         })
         .join(';');
+      const selectionFactors = (active?.selectionReason?.factors ?? [])
+        .map(
+          (factor) =>
+            `${factor.code}:${factor.value === undefined ? 'n' : q(factor.value)}:` +
+            `${factor.targetEntityId ?? 'n'}:${factor.conceptId ?? 'n'}`,
+        )
+        .join(',');
       const failure = (value: PlanFailure | null) => {
         if (value === null) return 'n';
         const target = value.target;
@@ -443,7 +451,9 @@ function fnv1aHashState(state: CanonicalState): string {
         return `${value.stepIndex}:${value.reason}:${value.tick}:${encodedTarget}`;
       };
       write(
-        `hp:${entity}:${humanPlan.nextPlanId}:${active?.id ?? 'n'}:${active?.goalKind ?? 'n'}:${active?.createdAtTick ?? 'n'}:${active?.currentStepIndex ?? 'n'}:${steps ?? 'n'}:${failure(active?.lastFailure ?? null)}:${failure(humanPlan.lastFailure)}`,
+        `hp:${entity}:${humanPlan.nextPlanId}:${active?.id ?? 'n'}:${active?.goalKind ?? 'n'}:${active?.createdAtTick ?? 'n'}:${active?.currentStepIndex ?? 'n'}:${steps ?? 'n'}:` +
+          `${active?.selectionReason?.code ?? 'n'}:${selectionFactors}:` +
+          `${failure(active?.lastFailure ?? null)}:${failure(humanPlan.lastFailure)}`,
       );
     }
   }
