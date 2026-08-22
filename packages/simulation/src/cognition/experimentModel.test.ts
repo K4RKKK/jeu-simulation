@@ -8,6 +8,7 @@ import {
 import { applyFoodIngestionEvidence } from './foodBeliefModel.js';
 import {
   buildFoodExperimentCandidate,
+  foodOutcomeAmbiguity01,
   foodUncertainty01,
   recentExperimentPenalty01,
 } from './experimentModel.js';
@@ -64,15 +65,37 @@ describe('food experimentation model', () => {
     });
   });
 
-  it('reduces uncertainty after coherent evidence and restores it for contradictions', () => {
-    const knowledge = createEmptyCognitiveKnowledge();
-    for (let tick = 1; tick <= 10; tick++)
-      applyFoodIngestionEvidence(knowledge, 'berry:red', true, false, tick);
-    const coherent = foodUncertainty01(knowledge, 'berry:red');
-    for (let tick = 11; tick <= 20; tick++)
-      applyFoodIngestionEvidence(knowledge, 'berry:red', false, true, tick);
-    expect(coherent).toBeLessThan(0.2);
-    expect(foodUncertainty01(knowledge, 'berry:red')).toBeGreaterThan(coherent);
+  it('separates information need from well-known outcome ambiguity', () => {
+    const fewContradictory = createEmptyCognitiveKnowledge();
+    applyFoodIngestionEvidence(fewContradictory, 'berry:red', true, false, 1);
+    applyFoodIngestionEvidence(fewContradictory, 'berry:red', false, true, 2);
+
+    const manyContradictory = createEmptyCognitiveKnowledge();
+    const coherentSafe = createEmptyCognitiveKnowledge();
+    for (let tick = 1; tick <= 100; tick++) {
+      const positive = tick % 2 === 0;
+      applyFoodIngestionEvidence(manyContradictory, 'berry:red', positive, !positive, tick);
+      applyFoodIngestionEvidence(coherentSafe, 'berry:red', true, false, tick);
+    }
+
+    const fewUncertainty = foodUncertainty01(fewContradictory, 'berry:red');
+    const manyUncertainty = foodUncertainty01(manyContradictory, 'berry:red');
+    expect(fewUncertainty).toBeGreaterThan(0.25);
+    expect(foodOutcomeAmbiguity01(manyContradictory, 'berry:red')).toBeCloseTo(1);
+    expect(manyUncertainty).toBeLessThan(fewUncertainty / 10);
+    expect(foodUncertainty01(coherentSafe, 'berry:red')).toBeLessThan(0.01);
+
+    const memory = createEmptyCognitiveMemory();
+    const candidate = (knowledge: typeof manyContradictory) =>
+      buildFoodExperimentCandidate(food(), memory, knowledge, personality, 0, 0, 200, 1, config)!;
+    expect(candidate(manyContradictory).score01).toBeLessThan(
+      candidate(fewContradictory).score01 / 10,
+    );
+    expect(candidate(manyContradictory).factors).toContainEqual({
+      code: 'knowledge.outcomeAmbiguity',
+      value: 1,
+      conceptId: 'berry:red',
+    });
   });
 
   it('responds to curiosity and caution using belief rather than world truth', () => {

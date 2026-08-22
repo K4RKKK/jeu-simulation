@@ -87,6 +87,67 @@ function asV15Snapshot(snapshot: SimulationSnapshot): SimulationSnapshot {
   };
 }
 
+/** Builds a v16-shaped save with the exact pre-experimentation fingerprint and schema. */
+function asV16Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): SimulationSnapshot {
+  const preExperimentationFingerprint = (
+    simulation as unknown as { preExperimentationConfigFingerprint(): string }
+  ).preExperimentationConfigFingerprint();
+  const plans = (snapshot.entities.components.HumanPlan ?? []) as unknown as [
+    number,
+    { activePlan?: { steps?: Record<string, unknown>[] } | null } & Record<string, unknown>,
+  ][];
+  const memories = (snapshot.entities.components.CognitiveMemory ?? []) as unknown as [
+    number,
+    { episodic?: Record<string, unknown>[] } & Record<string, unknown>,
+  ][];
+  const states = (snapshot.entities.components.NeedsState ?? []) as unknown as [
+    number,
+    Record<string, unknown>,
+  ][];
+  return {
+    ...snapshot,
+    version: 16,
+    configFingerprint: preExperimentationFingerprint,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...snapshot.entities.components,
+        HumanPlan: plans.map(([id, plan]) => [
+          id,
+          {
+            ...plan,
+            activePlan:
+              plan.activePlan === null || plan.activePlan === undefined
+                ? (plan.activePlan ?? null)
+                : {
+                    ...plan.activePlan,
+                    steps: (plan.activePlan.steps ?? []).map(
+                      ({ intent: _intent, ...step }) => step,
+                    ),
+                  },
+          },
+        ]),
+        CognitiveMemory: memories.map(([id, memory]) => [
+          id,
+          {
+            ...memory,
+            episodic: (memory.episodic ?? []).map((episode) => {
+              const experience = episode.experience as Record<string, unknown> | undefined;
+              if (experience?.kind !== 'food.ingestion') return episode;
+              const { motivation: _motivation, ...legacyExperience } = experience;
+              return { ...episode, experience: legacyExperience };
+            }),
+          },
+        ]),
+        NeedsState: states.map(([id, state]) => {
+          const { foodIntent: _foodIntent, ...legacyState } = state;
+          return [id, legacyState];
+        }),
+      },
+    },
+  };
+}
+
 function legacyNeedsState(
   action: NeedsStateComponent['action'],
   overrides: Partial<NeedsStateComponent>,
@@ -852,6 +913,38 @@ describe('migrateSnapshotV15ToV16', () => {
 });
 
 describe('migrateSnapshotV16ToV17', () => {
+  it('restores a genuine v16 snapshot with its historical configuration fingerprint', () => {
+    const source = makeSimulation('migration-v16-fingerprint');
+    const v16 = asV16Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = makeSimulation('migration-v16-fingerprint');
+    expect(() => target.restoreSnapshot(v16)).not.toThrow();
+    expect(target.captureSnapshot().version).toBe(17);
+    target.dispose();
+  });
+
+  it('rejects a genuine v16 snapshot when historical behavior configuration drifted', () => {
+    const source = new Simulation({
+      seed: 'migration-v16-fingerprint-drift',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        cognition: { spatialConfidenceHalfLifeSeconds: 999 },
+      },
+    });
+    const v16 = asV16Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const target = new Simulation({
+      seed: 'migration-v16-fingerprint-drift',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+    });
+    expect(() => target.restoreSnapshot(v16)).toThrow('configuration incompatible');
+    target.dispose();
+  });
+
   it('defaults legacy food plans, active meals, and experiences to need', () => {
     const simulation = makeSimulation('migration-v16-v17');
     const snapshot = simulation.captureSnapshot();

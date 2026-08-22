@@ -207,16 +207,20 @@ export class NeedSatisfactionSystem implements SimulationSystem {
   }
 
   private cancelSeek(state: NeedsStateComponent, movement: MovementComponent): void {
-    state.action = 'none';
+    this.clearAction(state);
     state.targetX = null;
     state.targetZ = null;
     state.resourceId = null;
     state.resourceOwnerChunkKey = null;
     state.resourceLocalId = null;
     state.resourceConceptId = null;
-    state.foodIntent = null;
     movement.targetX = null;
     movement.targetZ = null;
+  }
+
+  private clearAction(state: NeedsStateComponent): void {
+    state.action = 'none';
+    state.foodIntent = null;
   }
 
   private onArrival(
@@ -234,7 +238,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     const targetX = state.targetX;
     const targetZ = state.targetZ;
     if (targetX === null || targetZ === null) {
-      state.action = 'none';
+      this.clearAction(state);
       this.recordPlanFailure(planState, 'interaction.failed', ctx.tick, failureTarget);
       return;
     }
@@ -242,7 +246,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     // cas où la cible n'était pas atteignable au dernier mètre.
     const arrived = distance2D(transform.x, transform.z, targetX, targetZ) <= 2.5;
     if (!arrived) {
-      state.action = 'none';
+      this.clearAction(state);
       this.recordPlanFailure(planState, 'interaction.failed', ctx.tick, failureTarget);
       return;
     }
@@ -266,7 +270,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
     // seekFood : la ressource peut avoir été cueillie par un autre entre-temps.
     if (state.resourceId && ctx.world.delta.isDepleted(state.resourceId)) {
-      state.action = 'none';
+      this.clearAction(state);
       this.invalidateMissingTarget(memory, travelStep);
       this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
       return;
@@ -290,7 +294,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         // peut pas diffuser sa modification. On abandonne le plan avant la promotion.
         // `localId` is only world truth. Resolve it at interaction time, not planning.
         if (state.resourceOwnerChunkKey === null) {
-          state.action = 'none';
+          this.clearAction(state);
           this.invalidateMissingTarget(memory, travelStep);
           this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
           return;
@@ -298,7 +302,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       }
       const spawn = ctx.world.findResourceById(state.resourceId, state.resourceOwnerChunkKey);
       if (!spawn) {
-        state.action = 'none';
+        this.clearAction(state);
         this.invalidateMissingTarget(memory, travelStep);
         this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
         return;
@@ -325,7 +329,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       // La promotion peut échouer si un autre acteur a épuisé la ressource entre
       // sa relecture et ce point. Dans ce cas, aucun repas fantôme n'est accordé.
       if (interactiveResourceEntity === null) {
-        state.action = 'none';
+        this.clearAction(state);
         this.invalidateMissingTarget(memory, travelStep);
         this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
         return;
@@ -377,7 +381,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       if (interactiveResourceEntity === null) {
         // Garde structurelle : toutes les ressources ciblées doivent avoir été
         // promues plus haut avant une modification.
-        state.action = 'none';
+        this.clearAction(state);
         return;
       }
       harvestInteractiveResource(ctx.entities, ctx.world, interactiveResourceEntity, ctx.tick);

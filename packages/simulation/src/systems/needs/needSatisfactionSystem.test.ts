@@ -297,12 +297,12 @@ describe('NeedSatisfactionSystem', () => {
     simulation.dispose();
   });
 
-  it('interrupts a food search for an urgent hydration goal and clears its target', () => {
+  it('interrupts a deliberate food experiment for urgent hydration and clears its intent', () => {
     const simulation = needsSystems();
     const entity = simulation.humanIds()[0]!;
     const cognition = simulation.entities.getComponentOrThrow(entity, HumanCognition);
     const movement = simulation.entities.getComponentOrThrow(entity, Movement);
-    cognition.activeGoal = { kind: 'survive.nourish', startedAtTick: 0 };
+    cognition.activeGoal = { kind: 'explore', startedAtTick: 0 };
     movement.targetX = 42;
     movement.targetZ = 24;
     simulation.entities.addComponent(entity, NeedsState, {
@@ -313,7 +313,7 @@ describe('NeedSatisfactionSystem', () => {
       resourceOwnerChunkKey: '0:0',
       resourceLocalId: 1,
       resourceConceptId: 'food:target',
-      foodIntent: 'satisfyNeed',
+      foodIntent: 'deliberateExperiment',
       mealStartedTick: -1,
       mealHungerBefore01: 0,
       untilTick: -1,
@@ -331,6 +331,7 @@ describe('NeedSatisfactionSystem', () => {
     expect(cognition.activeGoal?.kind).toBe('survive.hydrate');
     expect(state.action).toBe('none');
     expect(state.resourceId).toBeNull();
+    expect(state.foodIntent).toBeNull();
     expect(movement.targetX).toBeNull();
     expect(movement.targetZ).toBeNull();
     simulation.dispose();

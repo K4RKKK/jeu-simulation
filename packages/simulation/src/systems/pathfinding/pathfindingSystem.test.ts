@@ -178,6 +178,74 @@ describe('PathfindingSystem', () => {
     simulation.dispose();
   });
 
+  it('clears deliberate experiment intent when its resource path is unreachable', () => {
+    const simulation = new Simulation({
+      seed: 'experimental-no-path',
+      population: 1,
+      config: { time: { gameSecondsPerTick: 1 } },
+      systems: [new PathfindingSystem()],
+    });
+    const entity = simulation.humanIds()[0]!;
+    const worldRef = {
+      type: 'resource' as const,
+      resourceId: 'berry:unreachable',
+      ownerChunkKey: '0:0',
+      localId: 1,
+    };
+    simulation.entities.addComponent(entity, NeedsState, {
+      action: 'seekFood',
+      targetX: 1e9,
+      targetZ: 1e9,
+      resourceId: worldRef.resourceId,
+      resourceOwnerChunkKey: worldRef.ownerChunkKey,
+      resourceLocalId: worldRef.localId,
+      resourceConceptId: 'berry:red',
+      foodIntent: 'deliberateExperiment',
+      mealStartedTick: -1,
+      mealHungerBefore01: 0,
+      untilTick: -1,
+      mealMaxGain: 1,
+      poisoningUntilTick: -1,
+      poisoningToxicity01: 0,
+      currentMealCausedPoisoning: false,
+      pathFailedAtTick: -1,
+    });
+    const plans = simulation.entities.getComponentOrThrow(entity, HumanPlan);
+    plans.activePlan = {
+      id: 0,
+      goalKind: 'explore',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [
+        {
+          kind: 'move.to_resource',
+          worldRef,
+          subjectConceptId: 'berry:red',
+          rememberedX: 1e9,
+          rememberedZ: 1e9,
+        },
+        {
+          kind: 'eat.resource',
+          worldRef,
+          subjectConceptId: 'berry:red',
+          intent: 'deliberateExperiment',
+        },
+      ],
+      lastFailure: null,
+    };
+    const movement = simulation.entities.getComponentOrThrow(entity, Movement);
+    movement.targetX = 1e9;
+    movement.targetZ = 1e9;
+    simulation.start();
+    simulation.step(20);
+
+    const state = simulation.entities.getComponentOrThrow(entity, NeedsState);
+    expect(plans.activePlan.lastFailure?.reason).toBe('target.unreachable');
+    expect(state.action).toBe('none');
+    expect(state.foodIntent).toBeNull();
+    simulation.dispose();
+  });
+
   it('holds off a vital plan after a failed path (pathFailedAtTick)', () => {
     const simulation = makeSimulation('vital-fail');
     simulation.start();

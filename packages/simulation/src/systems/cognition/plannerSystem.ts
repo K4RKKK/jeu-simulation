@@ -373,4 +373,5 @@ function clearSeek(state: NeedsStateComponent): void {
   state.resourceOwnerChunkKey = null;
   state.resourceLocalId = null;
   state.resourceConceptId = null;
+  state.foodIntent = null;
 }

@@ -44,23 +44,43 @@ function probabilityBelief(
   return { probability01: belief.value.value01, confidence01: belief.confidence01 };
 }
 
-function beliefUncertainty01(belief: ProbabilityBelief | null): number {
-  if (belief === null) return 1;
-  const contradiction01 = 4 * belief.probability01 * (1 - belief.probability01);
-  return clamp01(1 - belief.confidence01 + belief.confidence01 * contradiction01);
+function outcomeAmbiguity01(belief: ProbabilityBelief): number {
+  return clamp01(4 * belief.probability01 * (1 - belief.probability01));
 }
 
-/** Unknown, weak, or contradictory food beliefs remain uncertain. */
+function beliefInformationNeed01(belief: ProbabilityBelief | null): number {
+  if (belief === null) return 1;
+  return clamp01((1 - belief.confidence01) * (0.5 + 0.5 * outcomeAmbiguity01(belief)));
+}
+
+/** Information still missing; known outcome variability is represented separately. */
 export function foodUncertainty01(
   knowledge: CognitiveKnowledgeComponent,
   conceptId: string,
 ): number {
   const nourishing = probabilityBelief(knowledge, conceptId, FOOD_NOURISHING_PROPERTY);
   const illnessRisk = probabilityBelief(knowledge, conceptId, FOOD_ILLNESS_RISK_PROPERTY);
-  return (beliefUncertainty01(nourishing) + beliefUncertainty01(illnessRisk)) / 2;
+  return (beliefInformationNeed01(nourishing) + beliefInformationNeed01(illnessRisk)) / 2;
 }
 
-/** A deliberate trial becomes attractive again gradually, without random cooldowns. */
+/** Variability believed from observed outcomes, not ignorance and not world truth. */
+export function foodOutcomeAmbiguity01(
+  knowledge: CognitiveKnowledgeComponent,
+  conceptId: string,
+): number | null {
+  const beliefs = [
+    probabilityBelief(knowledge, conceptId, FOOD_NOURISHING_PROPERTY),
+    probabilityBelief(knowledge, conceptId, FOOD_ILLNESS_RISK_PROPERTY),
+  ].filter((belief): belief is ProbabilityBelief => belief !== null);
+  if (beliefs.length === 0) return null;
+  return beliefs.reduce((sum, belief) => sum + outcomeAmbiguity01(belief), 0) / beliefs.length;
+}
+
+/**
+ * A deliberate trial becomes attractive again gradually, without random cooldowns.
+ * Episodes are bounded and may be evicted: long-term loop prevention comes primarily
+ * from learned information value decreasing, not from this short-lived penalty.
+ */
 export function recentExperimentPenalty01(
   memory: CognitiveMemoryComponent,
   conceptId: string,
@@ -105,6 +125,7 @@ export function buildFoodExperimentCandidate(
 
   const conceptId = entry.subjectConceptId;
   const uncertainty01 = foodUncertainty01(knowledge, conceptId);
+  const ambiguity01 = foodOutcomeAmbiguity01(knowledge, conceptId);
   const illnessRisk = probabilityBelief(knowledge, conceptId, FOOD_ILLNESS_RISK_PROPERTY);
   const believedRisk01 =
     illnessRisk === null
@@ -138,6 +159,9 @@ export function buildFoodExperimentCandidate(
     uncertainty01,
     factors: [
       { code: 'knowledge.uncertainty', value: uncertainty01, conceptId },
+      ...(ambiguity01 === null
+        ? []
+        : [{ code: 'knowledge.outcomeAmbiguity', value: ambiguity01, conceptId }]),
       { code: 'personality.curiosity', value: personality.curiosity },
       { code: 'personality.caution', value: personality.caution },
       believedRisk01 === null
