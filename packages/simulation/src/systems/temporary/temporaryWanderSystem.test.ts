@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Activity, Movement, Personality, Transform } from '../../components/index.js';
+import { Activity, HumanPlan, Movement, Personality, Transform } from '../../components/index.js';
 import type { SimulationConfig } from '../../config/simulationConfig.js';
 import { Simulation } from '../../simulation.js';
 import { MovementSystem } from '../movementSystem.js';
@@ -26,10 +26,26 @@ function makeSimulation(
   });
 }
 
+function startExploring(simulation: Simulation): void {
+  simulation.start();
+  for (const entity of simulation.humanIds()) {
+    const plans = simulation.entities.getComponentOrThrow(entity, HumanPlan);
+    plans.nextPlanId = 1;
+    plans.activePlan = {
+      id: 0,
+      goalKind: 'explore',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [{ kind: 'explore' }],
+      lastFailure: null,
+    };
+  }
+}
+
 describe('TemporaryWanderSystem', () => {
   it('gives idle humans a destination and marks them as walking', () => {
     const simulation = makeSimulation('wander', 10);
-    simulation.start();
+    startExploring(simulation);
     simulation.step(60);
 
     const walking = simulation
@@ -49,7 +65,7 @@ describe('TemporaryWanderSystem', () => {
 
   it('always records a readable reason for the current activity', () => {
     const simulation = makeSimulation('reason', 8);
-    simulation.start();
+    startExploring(simulation);
     simulation.step(400);
 
     for (const entity of simulation.humanIds()) {
@@ -61,7 +77,7 @@ describe('TemporaryWanderSystem', () => {
 
   it('alternates between resting and walking instead of walking non-stop', () => {
     const simulation = makeSimulation('alternation', 12);
-    simulation.start();
+    startExploring(simulation);
 
     let sawIdleAfterWalking = false;
     const entity = simulation.humanIds()[0]!;
@@ -80,7 +96,7 @@ describe('TemporaryWanderSystem', () => {
 
   it('lets curious individuals travel further than incurious ones', () => {
     const simulation = makeSimulation('curiosity', 60);
-    simulation.start();
+    startExploring(simulation);
 
     const distances = new Map<number, { curiosity: number; travelled: number }>();
     for (const entity of simulation.humanIds()) {
@@ -119,7 +135,7 @@ describe('TemporaryWanderSystem', () => {
 
   it('keeps destinations inside the world margin', () => {
     const simulation = makeSimulation('margin', 20);
-    simulation.start();
+    startExploring(simulation);
     simulation.step(3000);
 
     const limit =
@@ -136,7 +152,7 @@ describe('TemporaryWanderSystem', () => {
   it('rests at night unless courageous enough to keep moving', () => {
     // Départ à 22 h : le premier tick est déjà nocturne.
     const simulation = makeSimulation('night', 40, { startHourOfDay: 22 });
-    simulation.start();
+    startExploring(simulation);
     const threshold = simulation.config.wander.nightMovementCourageThreshold;
 
     // On échantillonne sur 10 minutes de nuit : un courageux n'est observable en marche
@@ -160,7 +176,7 @@ describe('TemporaryWanderSystem', () => {
 
   it('keeps cautious destinations within their slope limit', () => {
     const simulation = makeSimulation('caution', 40);
-    simulation.start();
+    startExploring(simulation);
 
     // La cible n'est observable que pendant la marche : on collecte chaque destination
     // croisée pendant plusieurs cycles plutôt qu'à un instant figé.
@@ -181,5 +197,44 @@ describe('TemporaryWanderSystem', () => {
     }
     expect(checked).toBeGreaterThan(0);
     simulation.dispose();
+  });
+
+  it('wanders during search plans but never while a move step is active', () => {
+    const searching = makeSimulation('search-wander', 1);
+    searching.start();
+    const searchingHuman = searching.humanIds()[0]!;
+    searching.entities.getComponentOrThrow(searchingHuman, HumanPlan).activePlan = {
+      id: 0,
+      goalKind: 'survive.nourish',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [{ kind: 'search.food' }],
+      lastFailure: null,
+    };
+    let searchedByMoving = false;
+    for (let i = 0; i < 500 && !searchedByMoving; i++) {
+      searching.step(1);
+      searchedByMoving =
+        searching.entities.getComponentOrThrow(searchingHuman, Movement).targetX !== null;
+    }
+    expect(searchedByMoving).toBe(true);
+    searching.dispose();
+
+    const moving = makeSimulation('move-no-wander', 1);
+    moving.start();
+    const movingHuman = moving.humanIds()[0]!;
+    moving.entities.getComponentOrThrow(movingHuman, HumanPlan).activePlan = {
+      id: 0,
+      goalKind: 'survive.hydrate',
+      createdAtTick: 0,
+      currentStepIndex: 0,
+      steps: [{ kind: 'move.to_water', rememberedX: 100, rememberedZ: 100 }],
+      lastFailure: null,
+    };
+    moving.step(500);
+    const movement = moving.entities.getComponentOrThrow(movingHuman, Movement);
+    expect(movement.targetX).toBeNull();
+    expect(movement.targetZ).toBeNull();
+    moving.dispose();
   });
 });

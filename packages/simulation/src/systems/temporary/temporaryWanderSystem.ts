@@ -1,5 +1,12 @@
 import type { EntityId } from '@civ/shared';
-import { Activity, Movement, NeedsState, Personality, Transform } from '../../components/index.js';
+import {
+  Activity,
+  HumanPlan,
+  Movement,
+  NeedsState,
+  Personality,
+  Transform,
+} from '../../components/index.js';
 import type {
   ActivityComponent,
   MovementComponent,
@@ -54,8 +61,8 @@ export class TemporaryWanderSystem implements SimulationSystem {
 
   update(ctx: SystemUpdateContext): void {
     ctx.entities.each(
-      [Transform, Movement, Activity, Personality],
-      (entity, transform, movement, activity, personality) => {
+      [Transform, Movement, Activity, Personality, HumanPlan],
+      (entity, transform, movement, activity, personality, planState) => {
         // En chemin : le MovementSystem s'en occupe.
         if (movement.targetX !== null || movement.targetZ !== null) return;
 
@@ -63,6 +70,15 @@ export class TemporaryWanderSystem implements SimulationSystem {
         // boit, mange ou se repose — le wander n'interfère pas (CLAUDE.md règle 9).
         const needsState = ctx.entities.getComponent(entity, NeedsState);
         if (needsState && needsState.action !== 'none') return;
+
+        const plan = planState.activePlan;
+        const step = plan?.steps[plan.currentStepIndex];
+        if (
+          step?.kind !== 'search.water' &&
+          step?.kind !== 'search.food' &&
+          step?.kind !== 'explore'
+        )
+          return;
 
         const state =
           ctx.entities.getComponent(entity, WanderState) ??

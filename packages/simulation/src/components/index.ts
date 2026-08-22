@@ -3,6 +3,7 @@ import { defineComponent } from '../core/componentType.js';
 import { CognitiveKnowledge } from './cognitiveKnowledge.js';
 import { CognitiveMemory } from './cognitiveMemory.js';
 import { HumanCognition } from './humanCognition.js';
+import { HumanPlan } from './humanPlan.js';
 import { InteractiveResource } from './interactiveResource.js';
 import { Memory } from './memory.js';
 import { Needs, NeedsState } from './needs.js';
@@ -11,6 +12,7 @@ export {
   CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
+  HumanPlan,
   InteractiveResource,
   Memory,
   Needs,
@@ -19,6 +21,7 @@ export {
 export { allocateBeliefId, createEmptyCognitiveKnowledge } from './cognitiveKnowledge.js';
 export { allocateMemoryId, createEmptyCognitiveMemory } from './cognitiveMemory.js';
 export { createEmptyHumanCognition } from './humanCognition.js';
+export { createEmptyHumanPlan } from './humanPlan.js';
 export type { Belief, CognitiveKnowledgeComponent } from './cognitiveKnowledge.js';
 export type {
   CognitiveMemoryComponent,
@@ -28,6 +31,14 @@ export type {
   WorldRef,
 } from './cognitiveMemory.js';
 export type { DecisionFactor, DecisionReason, HumanCognitionComponent } from './humanCognition.js';
+export type {
+  ActivePlan,
+  HumanPlanComponent,
+  PlanFailure,
+  PlanFailureReason,
+  PlanFailureTarget,
+  PlanStep,
+} from './humanPlan.js';
 export type { InteractiveResourceComponent } from './interactiveResource.js';
 export type { MemoryComponent } from './memory.js';
 export type { NeedsComponent, NeedsStateComponent } from './needs.js';

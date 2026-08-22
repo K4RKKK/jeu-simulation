@@ -3,6 +3,7 @@ import {
   CognitiveKnowledge,
   CognitiveMemory,
   HumanCognition,
+  HumanPlan,
   NeedsState,
   allocateBeliefId,
   allocateMemoryId,
@@ -224,6 +225,58 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
     const afterKind = hashWorldState(simulation);
     cognition.activeGoal = { kind: 'survive.hydrate', startedAtTick: 18 };
     expect(hashWorldState(simulation)).not.toBe(afterKind);
+    simulation.dispose();
+  });
+
+  it('changes when a persisted plan changes', () => {
+    const simulation = makeSimulation('hash-plan', 1);
+    const human = simulation.humanIds()[0]!;
+    const plan = simulation.entities.getComponentOrThrow(human, HumanPlan);
+    plan.activePlan = {
+      id: 3,
+      goalKind: 'survive.nourish',
+      createdAtTick: 9,
+      currentStepIndex: 0,
+      steps: [
+        {
+          kind: 'move.to_resource',
+          worldRef: { type: 'resource', resourceId: 'berry:1', ownerChunkKey: '0:0', localId: 1 },
+          subjectConceptId: 'berry:red',
+          rememberedX: 5,
+          rememberedZ: 6,
+        },
+        {
+          kind: 'eat.resource',
+          worldRef: { type: 'resource', resourceId: 'berry:1', ownerChunkKey: '0:0', localId: 1 },
+          subjectConceptId: 'berry:red',
+        },
+      ],
+      lastFailure: null,
+    };
+    const before = hashWorldState(simulation);
+    plan.activePlan.currentStepIndex = 1;
+    expect(hashWorldState(simulation)).not.toBe(before);
+
+    plan.activePlan.lastFailure = {
+      stepIndex: 0,
+      reason: 'target.unreachable',
+      tick: 12,
+      target: {
+        kind: 'resource',
+        worldRef: { type: 'resource', resourceId: 'berry:1', ownerChunkKey: '0:0', localId: 1 },
+      },
+    };
+    const failedTargetHash = hashWorldState(simulation);
+    plan.activePlan.lastFailure = {
+      stepIndex: 0,
+      reason: 'target.unreachable',
+      tick: 12,
+      target: {
+        kind: 'resource',
+        worldRef: { type: 'resource', resourceId: 'berry:2', ownerChunkKey: '0:0', localId: 2 },
+      },
+    };
+    expect(hashWorldState(simulation)).not.toBe(failedTargetHash);
     simulation.dispose();
   });
 

@@ -5,6 +5,8 @@ import type {
   CognitiveKnowledgeComponent,
   CognitiveMemoryComponent,
   HumanCognitionComponent,
+  HumanPlanComponent,
+  PlanFailure,
   HumanComponent,
   MemoryComponent,
   MovementComponent,
@@ -19,6 +21,7 @@ import {
   CognitiveMemory,
   Human,
   HumanCognition,
+  HumanPlan,
   Memory,
   Movement,
   Needs,
@@ -69,6 +72,7 @@ interface CanonicalHuman {
   readonly cognitiveMemory: CognitiveMemoryComponent | null;
   readonly cognitiveKnowledge: CognitiveKnowledgeComponent | null;
   readonly cognition: HumanCognitionComponent | null;
+  readonly humanPlan: HumanPlanComponent | null;
 }
 
 /**
@@ -147,6 +151,7 @@ function canonicalStateFromSimulation(simulation: Simulation): CanonicalState {
       cognitiveMemory: simulation.entities.getComponent(id, CognitiveMemory) ?? null,
       cognitiveKnowledge: simulation.entities.getComponent(id, CognitiveKnowledge) ?? null,
       cognition: simulation.entities.getComponent(id, HumanCognition) ?? null,
+      humanPlan: simulation.entities.getComponent(id, HumanPlan) ?? null,
     };
   });
 
@@ -176,6 +181,7 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
   const cognitiveMemoryById = componentMap<CognitiveMemoryComponent>('CognitiveMemory');
   const cognitiveKnowledgeById = componentMap<CognitiveKnowledgeComponent>('CognitiveKnowledge');
   const cognitionById = componentMap<HumanCognitionComponent>('HumanCognition');
+  const humanPlanById = componentMap<HumanPlanComponent>('HumanPlan');
 
   const getOrThrow = <T>(map: Map<EntityId, T>, id: EntityId, name: string): T => {
     const value = map.get(id);
@@ -200,6 +206,7 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
       cognitiveMemory: cognitiveMemoryById.get(id) ?? null,
       cognitiveKnowledge: cognitiveKnowledgeById.get(id) ?? null,
       cognition: cognitionById.get(id) ?? null,
+      humanPlan: humanPlanById.get(id) ?? null,
     }));
 
   return {
@@ -260,6 +267,7 @@ function fnv1aHashState(state: CanonicalState): string {
     cognitiveMemory,
     cognitiveKnowledge,
     cognition,
+    humanPlan,
   } of state.humans) {
     write(
       [
@@ -407,6 +415,35 @@ function fnv1aHashState(state: CanonicalState): string {
         .join(',');
       write(
         `hc:${entity}:${cognition.activeGoal?.kind ?? 'n'}:${cognition.activeGoal?.startedAtTick ?? 'n'}|${cognition.decisionReason?.code ?? 'n'}|${factors}`,
+      );
+    }
+
+    if (humanPlan) {
+      const active = humanPlan.activePlan;
+      const steps = active?.steps
+        .map((step) => {
+          if (step.kind === 'move.to_water' || step.kind === 'drink')
+            return `${step.kind}:${step.rememberedX === null ? 'n' : q(step.rememberedX)}:${step.rememberedZ === null ? 'n' : q(step.rememberedZ)}`;
+          if (step.kind === 'move.to_resource')
+            return `${step.kind}:${step.worldRef.resourceId}:${step.worldRef.ownerChunkKey}:${step.worldRef.localId}:${step.subjectConceptId ?? 'n'}:${q(step.rememberedX)}:${q(step.rememberedZ)}`;
+          if (step.kind === 'eat.resource')
+            return `${step.kind}:${step.worldRef.resourceId}:${step.worldRef.ownerChunkKey}:${step.worldRef.localId}:${step.subjectConceptId ?? 'n'}`;
+          return step.kind;
+        })
+        .join(';');
+      const failure = (value: PlanFailure | null) => {
+        if (value === null) return 'n';
+        const target = value.target;
+        const encodedTarget =
+          target === undefined
+            ? 'n'
+            : target.kind === 'resource'
+              ? `r:${target.worldRef.resourceId}:${target.worldRef.ownerChunkKey}:${target.worldRef.localId}`
+              : `w:${q(target.rememberedX)}:${q(target.rememberedZ)}`;
+        return `${value.stepIndex}:${value.reason}:${value.tick}:${encodedTarget}`;
+      };
+      write(
+        `hp:${entity}:${humanPlan.nextPlanId}:${active?.id ?? 'n'}:${active?.goalKind ?? 'n'}:${active?.createdAtTick ?? 'n'}:${active?.currentStepIndex ?? 'n'}:${steps ?? 'n'}:${failure(active?.lastFailure ?? null)}:${failure(humanPlan.lastFailure)}`,
       );
     }
   }
