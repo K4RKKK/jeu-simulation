@@ -4,6 +4,7 @@ import { CognitiveKnowledge } from './cognitiveKnowledge.js';
 import { CognitiveMemory } from './cognitiveMemory.js';
 import { HumanCognition } from './humanCognition.js';
 import { HumanPlan } from './humanPlan.js';
+import { HumanSkills } from './humanSkills.js';
 import { InteractiveResource } from './interactiveResource.js';
 import { Memory } from './memory.js';
 import { Needs, NeedsState } from './needs.js';
@@ -13,6 +14,7 @@ export {
   CognitiveMemory,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   InteractiveResource,
   Memory,
   Needs,
@@ -22,11 +24,14 @@ export { allocateBeliefId, createEmptyCognitiveKnowledge } from './cognitiveKnow
 export { allocateMemoryId, createEmptyCognitiveMemory } from './cognitiveMemory.js';
 export { createEmptyHumanCognition } from './humanCognition.js';
 export { createEmptyHumanPlan } from './humanPlan.js';
+export { createEmptyHumanSkills } from './humanSkills.js';
 export type { Belief, CognitiveKnowledgeComponent } from './cognitiveKnowledge.js';
 export type {
   CognitiveMemoryComponent,
   EpisodicMemoryEntry,
   FoodIngestionExperience,
+  LivedExperience,
+  ResourceGatheringExperience,
   SocialMemoryEntry,
   SpatialMemoryEntry,
   WorldRef,
@@ -40,6 +45,7 @@ export type {
   PlanFailureTarget,
   PlanStep,
 } from './humanPlan.js';
+export type { HumanSkillsComponent, SkillKind, SkillState } from './humanSkills.js';
 export type { InteractiveResourceComponent } from './interactiveResource.js';
 export type { MemoryComponent } from './memory.js';
 export type { NeedsComponent, NeedsStateComponent } from './needs.js';

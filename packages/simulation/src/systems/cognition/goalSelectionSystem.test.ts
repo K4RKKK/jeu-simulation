@@ -83,6 +83,7 @@ describe('GoalSelectionSystem', () => {
   it('interrupts experimental travel for a vital need but keeps experimental eating atomic', () => {
     for (const [action, expected] of [
       ['seekFood', 'survive.hydrate'],
+      ['gatherFood', 'explore'],
       ['eat', 'explore'],
     ] as const) {
       const sim = simulation();
@@ -100,6 +101,7 @@ describe('GoalSelectionSystem', () => {
         resourceLocalId: 1,
         resourceConceptId: 'berry:red',
         foodIntent: 'deliberateExperiment',
+        gatherStartedTick: action === 'gatherFood' ? 1 : -1,
         mealStartedTick: action === 'eat' ? 1 : -1,
         mealHungerBefore01: 0.8,
         untilTick: 100,

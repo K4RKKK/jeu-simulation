@@ -75,6 +75,25 @@ describe('Simulation snapshot — round-trip immédiat', () => {
     target.dispose();
   });
 
+  it('rejects a current snapshot when procedural skill timing configuration changed', () => {
+    const seed = 'skill-config-drift';
+    const source = new Simulation({
+      seed,
+      population: 1,
+      config: { skills: { resourceGathering: { noviceDurationSeconds: 8 } } },
+    });
+    const snapshot = source.captureSnapshot();
+    source.dispose();
+
+    const target = new Simulation({
+      seed,
+      population: 1,
+      config: { skills: { resourceGathering: { noviceDurationSeconds: 9 } } },
+    });
+    expect(() => target.restoreSnapshot(snapshot)).toThrow(/configuration incompatible/);
+    target.dispose();
+  });
+
   it('refuse un snapshot v15 dont une règle de changement de but a changé', () => {
     const seed = 'goal-config-drift';
     const source = new Simulation({

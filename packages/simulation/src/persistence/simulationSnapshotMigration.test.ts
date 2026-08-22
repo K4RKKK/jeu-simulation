@@ -4,6 +4,7 @@ import {
   CognitiveMemory,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   Needs,
   NeedsState,
 } from '../components/index.js';
@@ -19,6 +20,7 @@ import {
   migrateSnapshotV14ToV15,
   migrateSnapshotV15ToV16,
   migrateSnapshotV16ToV17,
+  migrateSnapshotV17ToV18,
   type SimulationSnapshot,
 } from './simulationSnapshot.js';
 
@@ -141,6 +143,30 @@ function asV16Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): Si
         ]),
         NeedsState: states.map(([id, state]) => {
           const { foodIntent: _foodIntent, ...legacyState } = state;
+          return [id, legacyState];
+        }),
+      },
+    },
+  };
+}
+
+/** Builds a genuine v17 save: no HumanSkills, no gather state, and the historical fingerprint. */
+function asV17Snapshot(simulation: Simulation, snapshot: SimulationSnapshot): SimulationSnapshot {
+  const preSkillsFingerprint = (
+    simulation as unknown as { preSkillsConfigFingerprint(): string }
+  ).preSkillsConfigFingerprint();
+  const { HumanSkills: _skills, ...components } = snapshot.entities.components;
+  const states = (components.NeedsState ?? []) as unknown as [number, Record<string, unknown>][];
+  return {
+    ...snapshot,
+    version: 17,
+    configFingerprint: preSkillsFingerprint,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        NeedsState: states.map(([id, state]) => {
+          const { gatherStartedTick: _gatherStartedTick, ...legacyState } = state;
           return [id, legacyState];
         }),
       },
@@ -920,7 +946,7 @@ describe('migrateSnapshotV16ToV17', () => {
 
     const target = makeSimulation('migration-v16-fingerprint');
     expect(() => target.restoreSnapshot(v16)).not.toThrow();
-    expect(target.captureSnapshot().version).toBe(17);
+    expect(target.captureSnapshot().version).toBe(18);
     target.dispose();
   });
 
@@ -1053,5 +1079,69 @@ describe('migrateSnapshotV16ToV17', () => {
     expect(migratedMemory.episodic[0]?.experience.motivation).toBe('need');
     expect(state.foodIntent).toBe('satisfyNeed');
     simulation.dispose();
+  });
+});
+
+describe('migrateSnapshotV17ToV18', () => {
+  it('adds empty individual skills and preserves a legacy meal already in progress', () => {
+    const source = makeSimulation('migration-v17-v18');
+    const human = source.humanIds()[0]!;
+    source.entities.addComponent(
+      human,
+      NeedsState,
+      legacyNeedsState('eat', {
+        resourceId: 'berry:legacy',
+        resourceOwnerChunkKey: '0:0',
+        resourceLocalId: 1,
+        resourceConceptId: 'berry:red',
+        foodIntent: 'satisfyNeed',
+        mealStartedTick: 5,
+        mealHungerBefore01: 0.2,
+      }),
+    );
+    const v17 = asV17Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const migrated = migrateSnapshotV17ToV18(v17);
+    expect(migrated.version).toBe(18);
+    const skills = (migrated.entities.components.HumanSkills ?? [])[0]?.[1];
+    expect(skills).toEqual({ skills: [] });
+    const state = (migrated.entities.components.NeedsState ?? [])[0]?.[1] as {
+      action: string;
+      gatherStartedTick: number;
+      mealStartedTick: number;
+    };
+    expect(state).toMatchObject({ action: 'eat', gatherStartedTick: -1, mealStartedTick: 5 });
+  });
+
+  it('restores a genuine v17 fingerprint and rejects historical behavior drift', () => {
+    const source = new Simulation({
+      seed: 'migration-v17-fingerprint',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        cognition: { spatialConfidenceHalfLifeSeconds: 999 },
+      },
+    });
+    const v17 = asV17Snapshot(source, source.captureSnapshot());
+    source.dispose();
+
+    const compatible = new Simulation({
+      seed: 'migration-v17-fingerprint',
+      population: 1,
+      config: {
+        time: { gameSecondsPerTick: 1 },
+        cognition: { spatialConfidenceHalfLifeSeconds: 999 },
+      },
+    });
+    expect(() => compatible.restoreSnapshot(v17)).not.toThrow();
+    expect(
+      compatible.entities.getComponentOrThrow(compatible.humanIds()[0]!, HumanSkills).skills,
+    ).toEqual([]);
+    compatible.dispose();
+
+    const drifted = makeSimulation('migration-v17-fingerprint');
+    expect(() => drifted.restoreSnapshot(v17)).toThrow('configuration incompatible');
+    drifted.dispose();
   });
 });

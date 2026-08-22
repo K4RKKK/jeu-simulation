@@ -6,6 +6,7 @@ import {
   Human,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   InteractiveResource,
   Memory,
   Movement,
@@ -17,6 +18,7 @@ import {
   createEmptyCognitiveMemory,
   createEmptyHumanCognition,
   createEmptyHumanPlan,
+  createEmptyHumanSkills,
 } from '../components/index.js';
 import type { SimulationClockState } from '../core/clock.js';
 import type { ComponentType } from '../core/componentType.js';
@@ -103,7 +105,8 @@ import type { ResourceDelta, TrailChunkDelta } from '../world/worldDelta.js';
 // The persisted watermark prevents loading a save from learning the same episode twice.
 // Legacy food.edible probabilities migrate to inverse food.illnessRisk probabilities.
 // v17 : voluntary food experiments persist plan intent and experienced motivation.
-export const SIMULATION_SNAPSHOT_VERSION = 17;
+// v18 : individual procedural skills and timed gathering state are persisted.
+export const SIMULATION_SNAPSHOT_VERSION = 18;
 
 /**
  * Instantané du monde suffisant pour rejouer identiquement à partir de cet instant.
@@ -213,6 +216,7 @@ export const PERSISTED_COMPONENTS: readonly ComponentType<unknown>[] = [
   CognitiveKnowledge,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
 ];
 
 /**
@@ -627,6 +631,29 @@ export function migrateSnapshotV16ToV17(snapshot: SimulationSnapshot): Simulatio
               state.action === 'seekFood' || state.action === 'eat' ? 'satisfyNeed' : null,
           },
         ]),
+      },
+    },
+  };
+}
+
+/** v17 -> v18: add empty individual skills without fabricating past practice. */
+export function migrateSnapshotV17ToV18(snapshot: SimulationSnapshot): SimulationSnapshot {
+  if (snapshot.version !== 17) {
+    throw new Error(`migrateSnapshotV17ToV18: version ${snapshot.version} inattendue (17 requis)`);
+  }
+  type LegacyNeedsState = Record<string, unknown>;
+  const components = snapshot.entities.components;
+  const needsStates = (components.NeedsState ?? []) as unknown as [EntityId, LegacyNeedsState][];
+  const humanIds = (components.Human ?? []).map(([id]) => id);
+  return {
+    ...snapshot,
+    version: 18,
+    entities: {
+      ...snapshot.entities,
+      components: {
+        ...components,
+        HumanSkills: humanIds.map((id) => [id, createEmptyHumanSkills()]),
+        NeedsState: needsStates.map(([id, state]) => [id, { ...state, gatherStartedTick: -1 }]),
       },
     },
   };

@@ -37,6 +37,7 @@ export * from './humans/humanFactory.js';
 export * from './humans/names.js';
 export * from './cognition/experimentModel.js';
 export * from './cognition/foodActionIntent.js';
+export * from './cognition/skillModel.js';
 
 /* Systèmes */
 export * from './systems/movementSystem.js';

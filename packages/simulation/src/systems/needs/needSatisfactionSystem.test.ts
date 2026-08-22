@@ -7,6 +7,7 @@ import {
   CognitiveMemory,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   Movement,
   Needs,
   NeedsState,
@@ -174,6 +175,41 @@ function seedWaterNearHuman(simulation: Simulation, radiusM: number): { x: numbe
 }
 
 describe('NeedSatisfactionSystem', () => {
+  it('keeps knowledge and target selection independent while skill changes gathering duration', () => {
+    const novice = needsSystems();
+    const expert = needsSystems();
+    const noviceSpawn = seedFoodUnderHuman(novice, (candidate) => candidate.foodKcal > 0);
+    const expertSpawn = seedFoodUnderHuman(expert, (candidate) => candidate.foodKcal > 0);
+    expect(expertSpawn.id).toBe(noviceSpawn.id);
+    const expertHuman = expert.humanIds()[0]!;
+    expert.entities.getComponentOrThrow(expertHuman, HumanSkills).skills.push({
+      kind: 'resource.gathering',
+      proficiency01: 1,
+      practiceCount: 100,
+      lastPracticedTick: 0,
+    });
+    setNeeds(novice, { hydration: 1, hunger: 0.05, energy: 1 });
+    setNeeds(expert, { hydration: 1, hunger: 0.05, energy: 1 });
+    novice.start();
+    expert.start();
+    novice.step(10);
+    expert.step(10);
+
+    const noviceHuman = novice.humanIds()[0]!;
+    const noviceState = novice.entities.getComponentOrThrow(noviceHuman, NeedsState);
+    const expertState = expert.entities.getComponentOrThrow(expertHuman, NeedsState);
+    expect(noviceState.action).toBe('gatherFood');
+    expect(expertState.action).toBe('gatherFood');
+    expect(expertState.resourceId).toBe(noviceState.resourceId);
+    expect(noviceState.untilTick - noviceState.gatherStartedTick!).toBe(8);
+    expect(expertState.untilTick - expertState.gatherStartedTick!).toBe(2);
+    expect(novice.entities.getComponentOrThrow(noviceHuman, CognitiveKnowledge).beliefs).toEqual(
+      expert.entities.getComponentOrThrow(expertHuman, CognitiveKnowledge).beliefs,
+    );
+    novice.dispose();
+    expert.dispose();
+  });
+
   it('sends a thirsty human towards a remembered shore', () => {
     const simulation = needsSystems();
     simulation.start();
@@ -230,9 +266,9 @@ describe('NeedSatisfactionSystem', () => {
       expect(movement.targetX).not.toBeNull();
       expect(movement.targetZ).not.toBeNull();
     } else {
-      expect(state.action).toBe('eat');
-      expect(activity.kind).toBe('eat');
-      expect(activity.reason).toContain('mange pour apaiser sa faim');
+      expect(state.action).toBe('gatherFood');
+      expect(activity.kind).toBe('gather');
+      expect(activity.reason).toContain('détacher une portion');
     }
     expect(cognition.activeGoal?.kind).toBe('survive.nourish');
     expect(cognition.decisionReason?.code).toBe('goal.select.survive.nourish');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CognitiveKnowledge, CognitiveMemory } from '../../components/index.js';
+import { CognitiveKnowledge, CognitiveMemory, HumanSkills } from '../../components/index.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
 import {
   FOOD_ILLNESS_RISK_PROPERTY,
@@ -48,7 +48,49 @@ function addIngestion(
   );
 }
 
+function addGathering(simulation: Simulation, humanId: number, tick = 1): void {
+  const memory = simulation.entities.getComponentOrThrow(humanId, CognitiveMemory);
+  rememberEpisodic(
+    memory,
+    {
+      tick,
+      eventType: 'resource.gathering',
+      actors: [humanId],
+      outcome: 'resource.portion_detached',
+      emotionalStrength01: 0.2,
+      experience: {
+        kind: 'resource.gathering',
+        subjectConceptId: 'berry:red',
+        actionTick: tick - 1,
+        outcomeTick: tick,
+        completed: true,
+      },
+    },
+    simulation.config.cognition,
+  );
+}
+
 describe('LearningSystem', () => {
+  it('consolidates successful gathering exactly once into individual skill only', () => {
+    const world = simulation();
+    const [practiced, novice] = world.humanIds();
+    addGathering(world, practiced!);
+    world.start();
+    world.step(6);
+    const skills = world.entities.getComponentOrThrow(practiced!, HumanSkills);
+    expect(skills.skills[0]).toMatchObject({
+      kind: 'resource.gathering',
+      proficiency01: 0.04,
+      practiceCount: 1,
+      lastPracticedTick: 1,
+    });
+    expect(world.entities.getComponentOrThrow(novice!, HumanSkills).skills).toEqual([]);
+    expect(world.entities.getComponentOrThrow(practiced!, CognitiveKnowledge).beliefs).toEqual([]);
+    world.step(60);
+    expect(skills.skills[0]?.practiceCount).toBe(1);
+    world.dispose();
+  });
+
   it('consolide une ingestion une seule fois et sépare nutrition et risque', () => {
     const world = simulation();
     world.start();

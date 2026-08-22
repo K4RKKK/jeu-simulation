@@ -6,6 +6,8 @@ import type {
   CognitiveMemoryComponent,
   HumanCognitionComponent,
   HumanPlanComponent,
+  HumanSkillsComponent,
+  LivedExperience,
   PlanFailure,
   HumanComponent,
   MemoryComponent,
@@ -22,6 +24,7 @@ import {
   Human,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   Memory,
   Movement,
   Needs,
@@ -73,6 +76,7 @@ interface CanonicalHuman {
   readonly cognitiveKnowledge: CognitiveKnowledgeComponent | null;
   readonly cognition: HumanCognitionComponent | null;
   readonly humanPlan: HumanPlanComponent | null;
+  readonly humanSkills: HumanSkillsComponent | null;
 }
 
 /**
@@ -152,6 +156,7 @@ function canonicalStateFromSimulation(simulation: Simulation): CanonicalState {
       cognitiveKnowledge: simulation.entities.getComponent(id, CognitiveKnowledge) ?? null,
       cognition: simulation.entities.getComponent(id, HumanCognition) ?? null,
       humanPlan: simulation.entities.getComponent(id, HumanPlan) ?? null,
+      humanSkills: simulation.entities.getComponent(id, HumanSkills) ?? null,
     };
   });
 
@@ -182,6 +187,7 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
   const cognitiveKnowledgeById = componentMap<CognitiveKnowledgeComponent>('CognitiveKnowledge');
   const cognitionById = componentMap<HumanCognitionComponent>('HumanCognition');
   const humanPlanById = componentMap<HumanPlanComponent>('HumanPlan');
+  const humanSkillsById = componentMap<HumanSkillsComponent>('HumanSkills');
 
   const getOrThrow = <T>(map: Map<EntityId, T>, id: EntityId, name: string): T => {
     const value = map.get(id);
@@ -207,6 +213,7 @@ function canonicalStateFromSnapshot(snapshot: SimulationSnapshot): CanonicalStat
       cognitiveKnowledge: cognitiveKnowledgeById.get(id) ?? null,
       cognition: cognitionById.get(id) ?? null,
       humanPlan: humanPlanById.get(id) ?? null,
+      humanSkills: humanSkillsById.get(id) ?? null,
     }));
 
   return {
@@ -231,6 +238,12 @@ function fnv1aHashState(state: CanonicalState): string {
   };
   const q = (value: number): number => quantize(value, 4);
   const qOrNull = (value: number | null): number | 'n' => (value === null ? 'n' : q(value));
+  const encodeExperience = (experience: LivedExperience): string => {
+    if (experience.kind === 'resource.gathering') {
+      return `${experience.kind}:${experience.subjectConceptId ?? 'n'}:${experience.actionTick}:${experience.outcomeTick}:${experience.completed ? 1 : 0}`;
+    }
+    return `${experience.kind}:${experience.subjectConceptId}:${experience.motivation}:${experience.actionTick}:${experience.outcomeTick}:${q(experience.hungerBefore01)}:${q(experience.hungerAfter01)}:${experience.illnessObserved ? 1 : 0}`;
+  };
 
   write(`tick:${state.tick}`);
   write(`entities:${state.entityCount}`);
@@ -268,6 +281,7 @@ function fnv1aHashState(state: CanonicalState): string {
     cognitiveKnowledge,
     cognition,
     humanPlan,
+    humanSkills,
   } of state.humans) {
     write(
       [
@@ -325,6 +339,7 @@ function fnv1aHashState(state: CanonicalState): string {
           `${needsState.resourceId ?? 'n'}:${needsState.resourceOwnerChunkKey ?? 'n'}:` +
           `${needsState.resourceLocalId ?? 'n'}:${needsState.resourceConceptId ?? 'n'}:` +
           `${needsState.foodIntent ?? 'n'}:` +
+          `${needsState.gatherStartedTick ?? 'n'}:` +
           `${needsState.mealStartedTick}:${q(needsState.mealHungerBefore01)}:` +
           `${needsState.untilTick}:${q(needsState.mealMaxGain)}:` +
           `${needsState.poisoningUntilTick}:${q(needsState.poisoningToxicity01)}:` +
@@ -371,7 +386,7 @@ function fnv1aHashState(state: CanonicalState): string {
             `${entry.id}:${entry.tick}:${entry.eventType}:${entry.actors.join(',')}:` +
             `${entry.subjectConcept ?? 'n'}:${entry.x === undefined ? 'n' : q(entry.x)}:` +
             `${entry.z === undefined ? 'n' : q(entry.z)}:${entry.outcome}:${q(entry.emotionalStrength01)}:` +
-            `${entry.experience === undefined ? 'n' : `${entry.experience.kind}:${entry.experience.subjectConceptId}:${entry.experience.motivation}:${entry.experience.actionTick}:${entry.experience.outcomeTick}:${q(entry.experience.hungerBefore01)}:${q(entry.experience.hungerAfter01)}:${entry.experience.illnessObserved ? 1 : 0}`}`,
+            `${entry.experience === undefined ? 'n' : encodeExperience(entry.experience)}`,
         )
         .join(';');
       const social = cognitiveMemory.social
@@ -455,6 +470,16 @@ function fnv1aHashState(state: CanonicalState): string {
           `${active?.selectionReason?.code ?? 'n'}:${selectionFactors}:` +
           `${failure(active?.lastFailure ?? null)}:${failure(humanPlan.lastFailure)}`,
       );
+    }
+
+    if (humanSkills) {
+      const skills = humanSkills.skills
+        .map(
+          (skill) =>
+            `${skill.kind}:${q(skill.proficiency01)}:${skill.practiceCount}:${skill.lastPracticedTick}`,
+        )
+        .join(';');
+      write(`hs:${entity}:${skills}`);
     }
   }
 

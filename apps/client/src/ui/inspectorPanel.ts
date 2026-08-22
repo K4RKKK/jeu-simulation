@@ -28,6 +28,7 @@ const NEED_ALERT_LABELS: Record<keyof NeedsSnapshot, string> = {
 const ACTIVITY_LABELS: Record<ActivityKind, string> = {
   idle: 'reste immobile',
   walking: 'se déplace',
+  gather: 'récolte une ressource',
   drink: 'boit',
   eat: 'mange',
   rest: 'se repose',

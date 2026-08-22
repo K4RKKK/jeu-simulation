@@ -6,6 +6,7 @@ import {
   Human,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   Memory,
   Movement,
   Needs,
@@ -15,6 +16,7 @@ import {
   createEmptyCognitiveMemory,
   createEmptyHumanCognition,
   createEmptyHumanPlan,
+  createEmptyHumanSkills,
   type PersonalityComponent,
 } from '../components/index.js';
 import type { SimulationConfig } from '../config/simulationConfig.js';
@@ -159,6 +161,7 @@ export class HumanFactory {
     entities.addComponent(entity, CognitiveKnowledge, createEmptyCognitiveKnowledge());
     entities.addComponent(entity, HumanCognition, createEmptyHumanCognition());
     entities.addComponent(entity, HumanPlan, createEmptyHumanPlan());
+    entities.addComponent(entity, HumanSkills, createEmptyHumanSkills());
 
     events.emit('HumanBorn', { tick: clock.currentTick, entity, name, ageYears });
     return entity;

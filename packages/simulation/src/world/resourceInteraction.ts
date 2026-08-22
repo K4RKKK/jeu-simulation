@@ -7,6 +7,16 @@ import {
 import type { EntityManager } from '../core/entityManager.js';
 import type { World } from './world.js';
 
+export type ResourceGatherCommitResult =
+  | { readonly committed: false; readonly reason: 'missing' | 'depleted' }
+  | {
+      readonly committed: true;
+      readonly foodKcal: number;
+      readonly foodToxicity01: number;
+      readonly harvestServings: number;
+      readonly remainingServings: number;
+    };
+
 /**
  * Promeut une ressource procédurale en entité ECS au premier contact.
  *
@@ -92,6 +102,39 @@ export function harvestInteractiveResource(
   resource.lastModifiedTick = tick;
   if (remaining === 0) resource.state = 'depleted';
   return remaining;
+}
+
+/**
+ * Commits one detached portion after a timed gather. Physical payload is captured before
+ * the world mutation so the final portion remains edible after its spawn disappears.
+ */
+export function commitResourceGathering(
+  entities: EntityManager,
+  world: World,
+  resourceEntity: EntityId,
+  actor: EntityId,
+  tick: number,
+): ResourceGatherCommitResult {
+  const resource = entities.getComponent(resourceEntity, InteractiveResource);
+  const transform = entities.getComponent(resourceEntity, Transform);
+  if (!resource || !transform || !resource.interactingEntityIds.includes(actor)) {
+    return { committed: false, reason: 'missing' };
+  }
+  if (resource.state === 'depleted' || world.delta.isDepleted(resource.resourceId)) {
+    return { committed: false, reason: 'depleted' };
+  }
+  const spawn = world.findResourceById(resource.resourceId, resource.ownerChunkKey);
+  if (!spawn || spawn.localId !== resource.localId) {
+    return { committed: false, reason: 'missing' };
+  }
+
+  const payload = {
+    foodKcal: spawn.foodKcal,
+    foodToxicity01: spawn.foodToxicity01,
+    harvestServings: spawn.harvestServings,
+  };
+  const remainingServings = harvestInteractiveResource(entities, world, resourceEntity, tick);
+  return { committed: true, ...payload, remainingServings };
 }
 
 /**

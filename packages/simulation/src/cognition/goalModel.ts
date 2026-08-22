@@ -38,6 +38,11 @@ export function executionForNeedsAction(
         goal: foodIntent === 'deliberateExperiment' ? 'explore' : 'survive.nourish',
         mode: 'seek',
       };
+    case 'gatherFood':
+      return {
+        goal: foodIntent === 'deliberateExperiment' ? 'explore' : 'survive.nourish',
+        mode: 'atomic',
+      };
     case 'drink':
       return { goal: 'survive.hydrate', mode: 'atomic' };
     case 'eat':
