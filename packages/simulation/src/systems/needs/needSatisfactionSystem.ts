@@ -3,6 +3,7 @@ import {
   CognitiveMemory,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   Movement,
   Needs,
   NeedsState,
@@ -12,6 +13,7 @@ import type {
   ActivityComponent,
   CognitiveMemoryComponent,
   HumanPlanComponent,
+  HumanSkillsComponent,
   MovementComponent,
   NeedsComponent,
   NeedsStateComponent,
@@ -25,13 +27,18 @@ import type { SimulationSystem, SystemUpdateContext } from '../../core/system.js
 import type { EntityId } from '@civ/shared';
 import {
   beginResourceInteraction,
+  commitResourceGathering,
   endResourceInteraction,
-  harvestInteractiveResource,
+  findInteractiveResource,
 } from '../../world/resourceInteraction.js';
 import { rememberEpisodic } from '../../cognition/episodicMemoryModel.js';
 import { goalForNeedsAction } from '../../cognition/goalModel.js';
 import { motivationForFoodIntent } from '../../cognition/foodActionIntent.js';
 import { invalidateSpatialWorldRef } from '../../cognition/spatialMemoryModel.js';
+import {
+  getSkillProficiency01,
+  resourceGatheringDurationSeconds,
+} from '../../cognition/skillModel.js';
 
 /**
  * Décide des actions vitales quand un besoin devient critique (CLAUDE.md règle 7 : il
@@ -59,8 +66,17 @@ export class NeedSatisfactionSystem implements SimulationSystem {
 
   update(ctx: SystemUpdateContext): void {
     ctx.entities.each(
-      [Needs, Activity, Movement, Transform, CognitiveMemory, HumanCognition, HumanPlan],
-      (entity, needs, activity, movement, transform, memory, cognition, planState) => {
+      [
+        Needs,
+        Activity,
+        Movement,
+        Transform,
+        CognitiveMemory,
+        HumanCognition,
+        HumanPlan,
+        HumanSkills,
+      ],
+      (entity, needs, activity, movement, transform, memory, cognition, planState, skills) => {
         // Le plan n'existe que pour les besoins critiques : on le crée au premier passage.
         const state =
           ctx.entities.getComponent(entity, NeedsState) ??
@@ -73,6 +89,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
             resourceLocalId: null,
             resourceConceptId: null,
             foodIntent: null,
+            gatherStartedTick: -1,
             mealStartedTick: -1,
             mealHungerBefore01: 0,
             untilTick: -1,
@@ -102,7 +119,14 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           }
           // En route : le MovementSystem s'occupe du reste.
           if (movement.targetX !== null || movement.targetZ !== null) return;
-          this.onArrival(ctx, entity, needs, state, activity, transform, memory, planState);
+          this.onArrival(ctx, entity, needs, state, activity, transform, memory, planState, skills);
+          return;
+        }
+
+        if (state.action === 'gatherFood') {
+          if (ctx.tick >= state.untilTick) {
+            this.finishGathering(ctx, entity, needs, state, activity, memory, planState);
+          }
           return;
         }
 
@@ -232,6 +256,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     transform: TransformComponent,
     memory: CognitiveMemoryComponent,
     planState: HumanPlanComponent,
+    skills: HumanSkillsComponent,
   ): void {
     const travelStep = this.currentTravelStep(planState);
     const failureTarget = travelStep === undefined ? undefined : targetForTravelStep(travelStep);
@@ -275,76 +300,104 @@ export class NeedSatisfactionSystem implements SimulationSystem {
       this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
       return;
     }
-    // La toxicité n'est pas mémorisée : elle se lit sur la ressource elle-même, au moment
-    // de la cueillir — trop tard pour éviter les symptômes, juste à temps pour les subir.
-    let toxicity = 0;
-    // Taille du repas — dérivée des calories réelles de la ressource, pas d'une durée
-    // arbitraire. `1` par défaut (repas plein) si jamais aucune ressource n'est visée.
-    let mealMaxGain = 1;
-    // Nombre de récoltes que cette ressource peut encore fournir au total (`≥ 1`,
-    // voir `ResourceDefinition.harvestServings`) — sert à la fois à diviser le repas
-    // (une visite = une fraction, pas la ressource entière) et à `harvestResource`
-    // plus bas, qui décide seul si CETTE visite est la dernière.
-    let harvestServings = 1;
-    let interactiveResourceEntity: EntityId | null = null;
-    if (state.resourceId) {
-      if (state.resourceOwnerChunkKey === null || state.resourceLocalId === null) {
-        // Sans clé de chunk propriétaire, on ne peut plus la retrouver de façon fiable
-        // (une position jitterée peut désigner un autre chunk), et sans localId on ne
-        // peut pas diffuser sa modification. On abandonne le plan avant la promotion.
-        // `localId` is only world truth. Resolve it at interaction time, not planning.
-        if (state.resourceOwnerChunkKey === null) {
-          this.clearAction(state);
-          this.invalidateMissingTarget(memory, travelStep);
-          this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
-          return;
-        }
-      }
-      const spawn = ctx.world.findResourceById(state.resourceId, state.resourceOwnerChunkKey);
-      if (!spawn) {
-        this.clearAction(state);
-        this.invalidateMissingTarget(memory, travelStep);
-        this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
-        return;
-      }
-      state.resourceLocalId = spawn.localId;
-      toxicity = spawn.foodToxicity01;
-      harvestServings = spawn.harvestServings;
-      // Chaque visite, y compris la dernière, ne vaut qu'une fraction du repas complet :
-      // une ressource à 3 portions ne doit pas donner 3× plus de calories au total qu'une
-      // ressource à 1 portion pour la même taille de plante.
-      mealMaxGain = clamp(
-        spawn.foodKcal / harvestServings / ctx.config.needs.hunger.kcalPerFullMeal,
-        0,
-        1,
-      );
-      interactiveResourceEntity = beginResourceInteraction(
-        ctx.entities,
-        ctx.world,
-        entity,
-        state.resourceId,
-        state.resourceOwnerChunkKey,
-        ctx.tick,
-      );
-      // La promotion peut échouer si un autre acteur a épuisé la ressource entre
-      // sa relecture et ce point. Dans ce cas, aucun repas fantôme n'est accordé.
-      if (interactiveResourceEntity === null) {
-        this.clearAction(state);
-        this.invalidateMissingTarget(memory, travelStep);
-        this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
-        return;
-      }
+    if (state.resourceId === null || state.resourceOwnerChunkKey === null) {
+      this.clearAction(state);
+      this.invalidateMissingTarget(memory, travelStep);
+      this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
+      return;
     }
+    const spawn = ctx.world.findResourceById(state.resourceId, state.resourceOwnerChunkKey);
+    if (!spawn) {
+      this.clearAction(state);
+      this.invalidateMissingTarget(memory, travelStep);
+      this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
+      return;
+    }
+    state.resourceLocalId = spawn.localId;
+    const interactiveResourceEntity = beginResourceInteraction(
+      ctx.entities,
+      ctx.world,
+      entity,
+      state.resourceId,
+      state.resourceOwnerChunkKey,
+      ctx.tick,
+    );
+    if (interactiveResourceEntity === null) {
+      this.clearAction(state);
+      this.invalidateMissingTarget(memory, travelStep);
+      this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
+      return;
+    }
+
+    const seconds = resourceGatheringDurationSeconds(
+      getSkillProficiency01(skills, 'resource.gathering'),
+      ctx.config.skills.resourceGathering,
+    );
+    state.action = 'gatherFood';
+    state.gatherStartedTick = ctx.tick;
+    // Duration is frozen here. Learning or restore must never recalculate this deadline.
+    state.untilTick =
+      ctx.tick + Math.max(1, Math.ceil(seconds / ctx.config.time.gameSecondsPerTick));
+    activity.kind = 'gather';
+    activity.reason = 'manipule une ressource pour en détacher une portion';
+    activity.startedAtTick = ctx.tick;
+  }
+
+  private finishGathering(
+    ctx: SystemUpdateContext,
+    entity: EntityId,
+    needs: NeedsComponent,
+    state: NeedsStateComponent,
+    activity: ActivityComponent,
+    memory: CognitiveMemoryComponent,
+    planState: HumanPlanComponent,
+  ): void {
+    const resourceId = state.resourceId;
+    const resourceEntity =
+      resourceId === null ? null : findInteractiveResource(ctx.entities, resourceId);
+    const result =
+      resourceEntity === null
+        ? ({ committed: false, reason: 'missing' } as const)
+        : commitResourceGathering(ctx.entities, ctx.world, resourceEntity, entity, ctx.tick);
+
+    if (resourceId !== null) endResourceInteraction(ctx.entities, entity, resourceId);
+    if (!result.committed) {
+      this.failGathering(ctx, state, activity, memory, planState);
+      return;
+    }
+
+    rememberEpisodic(
+      memory,
+      {
+        tick: ctx.tick,
+        eventType: 'resource.gathering',
+        actors: [entity],
+        ...(state.resourceConceptId === null ? {} : { subjectConcept: state.resourceConceptId }),
+        outcome: 'resource.portion_detached',
+        emotionalStrength01: 0.2,
+        experience: {
+          kind: 'resource.gathering',
+          subjectConceptId: state.resourceConceptId,
+          actionTick: state.gatherStartedTick ?? ctx.tick,
+          outcomeTick: ctx.tick,
+          completed: true,
+        },
+      },
+      ctx.config.cognition,
+    );
+
+    const mealMaxGain = clamp(
+      result.foodKcal / result.harvestServings / ctx.config.needs.hunger.kcalPerFullMeal,
+      0,
+      1,
+    );
     state.action = 'eat';
+    state.gatherStartedTick = -1;
     state.mealMaxGain = mealMaxGain;
     state.mealStartedTick = ctx.tick;
     state.mealHungerBefore01 = needs.hunger;
-    state.currentMealCausedPoisoning = toxicity > ctx.config.needs.toxicity.effectThreshold01;
-    // La durée elle-même reflète aussi la taille du repas : une petite baie ne retient
-    // pas un humain aussi longtemps qu'un repas complet, même si la faim est encore loin
-    // de son objectif — sinon le plancher `minEatSeconds` referait gagner plus de faim
-    // que ce que la ressource peut réellement fournir (voir le clamp dans MetabolismSystem
-    // pour la garantie stricte, cette durée n'est qu'une approximation cohérente).
+    state.currentMealCausedPoisoning =
+      result.foodToxicity01 > ctx.config.needs.toxicity.effectThreshold01;
     state.untilTick = this.durationEndTick(
       ctx,
       Math.min(ctx.config.needs.hunger.eatTarget - needs.hunger, mealMaxGain),
@@ -358,10 +411,9 @@ export class NeedSatisfactionSystem implements SimulationSystem {
         ? 'goûte une ressource pour en découvrir les effets'
         : `mange pour apaiser sa faim (faim ${needs.hunger.toFixed(2)})`;
     activity.startedAtTick = ctx.tick;
-    // La toxicité réelle n'est révélée qu'à l'ingestion : les symptômes commencent
-    // maintenant, puis la fin du repas mettra à jour une croyance sur son apparence.
-    if (toxicity > ctx.config.needs.toxicity.effectThreshold01) {
-      state.poisoningToxicity01 = toxicity;
+
+    if (state.currentMealCausedPoisoning) {
+      state.poisoningToxicity01 = result.foodToxicity01;
       state.poisoningUntilTick =
         ctx.tick +
         Math.max(
@@ -369,23 +421,51 @@ export class NeedSatisfactionSystem implements SimulationSystem {
           Math.ceil(ctx.config.needs.toxicity.durationSeconds / ctx.config.time.gameSecondsPerTick),
         );
     }
-    // La ressource est entamée : une portion en moins. `harvestResource` retire la
-    // ressource du monde de lui-même à la dernière portion (comportement inchangé pour
-    // une ressource à une seule portion) — un buisson cueilli ne repousse pas tant que
-    // la régénération saisonnière n'existe pas.
-    if (
-      state.resourceId &&
-      state.resourceOwnerChunkKey !== null &&
-      state.resourceLocalId !== null
-    ) {
-      if (interactiveResourceEntity === null) {
-        // Garde structurelle : toutes les ressources ciblées doivent avoir été
-        // promues plus haut avant une modification.
-        this.clearAction(state);
-        return;
-      }
-      harvestInteractiveResource(ctx.entities, ctx.world, interactiveResourceEntity, ctx.tick);
+  }
+
+  private failGathering(
+    ctx: SystemUpdateContext,
+    state: NeedsStateComponent,
+    activity: ActivityComponent,
+    memory: CognitiveMemoryComponent,
+    planState: HumanPlanComponent,
+  ): void {
+    const failureTarget = this.resourceTarget(state);
+    if (failureTarget?.kind === 'resource') {
+      invalidateSpatialWorldRef(memory, failureTarget.worldRef);
     }
+    this.recordPlanFailure(planState, 'target.missing', ctx.tick, failureTarget);
+    this.clearAction(state);
+    state.targetX = null;
+    state.targetZ = null;
+    state.resourceId = null;
+    state.resourceOwnerChunkKey = null;
+    state.resourceLocalId = null;
+    state.resourceConceptId = null;
+    state.gatherStartedTick = -1;
+    state.untilTick = -1;
+    activity.kind = 'idle';
+    activity.reason = 'ne trouve plus la ressource à manipuler';
+    activity.startedAtTick = ctx.tick;
+  }
+
+  private resourceTarget(state: NeedsStateComponent): PlanFailureTarget | undefined {
+    if (
+      state.resourceId === null ||
+      state.resourceOwnerChunkKey === null ||
+      state.resourceLocalId === null
+    ) {
+      return undefined;
+    }
+    return {
+      kind: 'resource',
+      worldRef: {
+        type: 'resource',
+        resourceId: state.resourceId,
+        ownerChunkKey: state.resourceOwnerChunkKey,
+        localId: state.resourceLocalId,
+      },
+    };
   }
 
   private currentTravelStep(planState: HumanPlanComponent): PlanStep | undefined {
@@ -441,10 +521,6 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     planState: HumanPlanComponent,
   ): void {
     const done = state.action;
-    if (done === 'eat' && state.resourceId !== null) {
-      endResourceInteraction(ctx.entities, entity, state.resourceId);
-    }
-
     // Phase 3.3 : chaque action vitale terminée laisse un épisode. `emotionalStrength01`
     // classe la mémorabilité — un repas empoisonné surpasse largement une gorgée d'eau
     // ordinaire, et résistera plus longtemps à l'éviction (voir `episodicMemoryModel`).
@@ -528,6 +604,7 @@ export class NeedSatisfactionSystem implements SimulationSystem {
     state.resourceLocalId = null;
     state.resourceConceptId = null;
     state.foodIntent = null;
+    state.gatherStartedTick = -1;
     state.mealStartedTick = -1;
     state.mealHungerBefore01 = 0;
     state.currentMealCausedPoisoning = false;

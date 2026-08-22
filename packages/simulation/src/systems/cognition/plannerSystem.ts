@@ -272,14 +272,17 @@ export class PlannerSystem implements SimulationSystem {
     if (state === undefined || state.action === 'none') return null;
     if ((state.action === 'seekWater' || state.action === 'drink') && goal !== 'survive.hydrate')
       return null;
-    if ((state.action === 'seekFood' || state.action === 'eat') && goal !== 'survive.nourish')
+    if (
+      (state.action === 'seekFood' || state.action === 'gatherFood' || state.action === 'eat') &&
+      goalForFoodIntent(state.foodIntent) !== goal
+    )
       return null;
     if (state.action === 'rest' && goal !== 'survive.rest') return null;
     if (state.action === 'drink')
       return [{ kind: 'drink', rememberedX: state.targetX, rememberedZ: state.targetZ }];
     if (state.action === 'rest') return [{ kind: 'rest' }];
     if (
-      (state.action === 'seekFood' || state.action === 'eat') &&
+      (state.action === 'seekFood' || state.action === 'gatherFood' || state.action === 'eat') &&
       state.resourceId &&
       state.resourceOwnerChunkKey &&
       state.resourceLocalId !== null
@@ -290,7 +293,7 @@ export class PlannerSystem implements SimulationSystem {
         ownerChunkKey: state.resourceOwnerChunkKey,
         localId: state.resourceLocalId,
       };
-      if (state.action === 'eat') {
+      if (state.action === 'gatherFood' || state.action === 'eat') {
         return [
           {
             kind: 'eat.resource',
@@ -340,7 +343,16 @@ export class PlannerSystem implements SimulationSystem {
 }
 
 function isAtomic(state: NeedsStateComponent | undefined): boolean {
-  return state?.action === 'drink' || state?.action === 'eat' || state?.action === 'rest';
+  return (
+    state?.action === 'gatherFood' ||
+    state?.action === 'drink' ||
+    state?.action === 'eat' ||
+    state?.action === 'rest'
+  );
+}
+
+function goalForFoodIntent(intent: NeedsStateComponent['foodIntent']): GoalKind {
+  return intent === 'deliberateExperiment' ? 'explore' : 'survive.nourish';
 }
 
 function clearFailedSeek(state: NeedsStateComponent | undefined): void {

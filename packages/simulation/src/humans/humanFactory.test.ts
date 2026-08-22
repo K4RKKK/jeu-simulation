@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Human, Movement, Personality, Transform } from '../components/index.js';
+import { Human, HumanSkills, Movement, Personality, Transform } from '../components/index.js';
 import { Simulation } from '../simulation.js';
 
 function population(seed: string, count: number): Simulation {
@@ -7,6 +7,14 @@ function population(seed: string, count: number): Simulation {
 }
 
 describe('HumanFactory', () => {
+  it('creates individual empty procedural skills without blocking novice actions', () => {
+    const simulation = population('empty-skills', 3);
+    for (const entity of simulation.humanIds()) {
+      expect(simulation.entities.getComponentOrThrow(entity, HumanSkills).skills).toEqual([]);
+    }
+    simulation.dispose();
+  });
+
   it('produces physically coherent individuals', () => {
     const simulation = population('coherence', 40);
     const config = simulation.config.humans;

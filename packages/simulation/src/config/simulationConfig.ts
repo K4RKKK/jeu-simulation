@@ -331,6 +331,14 @@ export interface SchedulerConfig {
   intervals: Record<SystemFrequency, number>;
 }
 
+export interface SkillsConfig {
+  resourceGathering: {
+    noviceDurationSeconds: number;
+    expertDurationSeconds: number;
+    practiceLearningRate: number;
+  };
+}
+
 /**
  * Pathfinding (CLAUDE.md : le terrain décide de ce qui est praticable, la simulation
  * décide de ce que ça coûte). Les seuils d'infranchissabilité (pente maximale, eau trop
@@ -390,6 +398,7 @@ export interface SimulationConfig {
   needs: NeedsConfig;
   perception: PerceptionConfig;
   cognition: CognitionConfig;
+  skills: SkillsConfig;
   pathfinding: PathfindingConfig;
   scheduler: SchedulerConfig;
   network: NetworkConfig;
@@ -574,6 +583,13 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     // ~5h de souvenirs récents avant éviction. Les traumatismes (empoisonnements) résistent
     // plus longtemps grâce à leur `emotionalStrength01` élevé, par construction de l'évincement.
     maxEpisodicEntries: 64,
+  },
+  skills: {
+    resourceGathering: {
+      noviceDurationSeconds: 8,
+      expertDurationSeconds: 2,
+      practiceLearningRate: 0.04,
+    },
   },
   pathfinding: {
     // 2 m de tuile : un humain fait ~1,6 pas par tuile, la résolution suit la géographie

@@ -60,9 +60,11 @@ export interface EpisodicMemoryEntry {
   readonly z?: number;
   readonly outcome: string;
   readonly emotionalStrength01: number;
-  /** Observation structurée d'une ingestion, sans vérité moteur. */
-  readonly experience?: FoodIngestionExperience;
+  /** Expérience structurée consolidée une seule fois par le LearningSystem. */
+  readonly experience?: LivedExperience;
 }
+
+export type LivedExperience = FoodIngestionExperience | ResourceGatheringExperience;
 
 export interface FoodIngestionExperience {
   readonly kind: 'food.ingestion';
@@ -73,6 +75,14 @@ export interface FoodIngestionExperience {
   readonly hungerBefore01: number;
   readonly hungerAfter01: number;
   readonly illnessObserved: boolean;
+}
+
+export interface ResourceGatheringExperience {
+  readonly kind: 'resource.gathering';
+  readonly subjectConceptId: ConceptId | null;
+  readonly actionTick: number;
+  readonly outcomeTick: number;
+  readonly completed: true;
 }
 
 /** Ce qu'un humain retient d'un autre humain — primitives sociales minimales (P3.4 texte). */

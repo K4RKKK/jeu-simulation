@@ -4,6 +4,7 @@ import {
   CognitiveMemory,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   NeedsState,
   allocateBeliefId,
   allocateMemoryId,
@@ -23,6 +24,24 @@ function makeSimulation(seed: string): Simulation {
  * logique qui la remplira plus tard.
  */
 describe('persistance des composants cognitifs', () => {
+  it('preserves individual procedural proficiency and practice metadata', () => {
+    const source = makeSimulation('skill-persistence');
+    const human = source.humanIds()[0]!;
+    const skills = source.entities.getComponentOrThrow(human, HumanSkills);
+    skills.skills.push({
+      kind: 'resource.gathering',
+      proficiency01: 0.42,
+      practiceCount: 17,
+      lastPracticedTick: 93,
+    });
+    const snapshot = source.captureSnapshot();
+    const restored = makeSimulation('skill-persistence');
+    restored.restoreSnapshot(snapshot);
+    expect(restored.entities.getComponentOrThrow(human, HumanSkills)).toEqual(skills);
+    source.dispose();
+    restored.dispose();
+  });
+
   it('conserve mémoire spatiale/épisodique/sociale, croyances et état de décision', () => {
     const simulation = makeSimulation('cognition-persistence');
     const [human] = simulation.humanIds();
@@ -180,10 +199,12 @@ describe('persistance des composants cognitifs', () => {
     expect(restored.entities.getComponentOrThrow(human, NeedsState).foodIntent).toBe(
       'deliberateExperiment',
     );
-    expect(
-      restored.entities.getComponentOrThrow(human, CognitiveMemory).episodic[0]?.experience
-        ?.motivation,
-    ).toBe('deliberateExperiment');
+    const experience = restored.entities.getComponentOrThrow(human, CognitiveMemory).episodic[0]
+      ?.experience;
+    expect(experience?.kind).toBe('food.ingestion');
+    expect(experience?.kind === 'food.ingestion' ? experience.motivation : null).toBe(
+      'deliberateExperiment',
+    );
     source.dispose();
     restored.dispose();
   });

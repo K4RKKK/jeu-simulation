@@ -4,6 +4,7 @@ import {
   CognitiveMemory,
   HumanCognition,
   HumanPlan,
+  HumanSkills,
   NeedsState,
   allocateBeliefId,
   allocateMemoryId,
@@ -64,6 +65,53 @@ describe('hashSnapshot', () => {
  * de tête de `stateHash.ts`).
  */
 describe('hashWorldState — sensibilité aux composants cognitifs', () => {
+  it('changes for proficiency, practice count, and a frozen gathering deadline', () => {
+    const simulation = makeSimulation('hash-skills', 1);
+    const human = simulation.humanIds()[0]!;
+    const skills = simulation.entities.getComponentOrThrow(human, HumanSkills);
+    const initial = hashWorldState(simulation);
+    skills.skills.push({
+      kind: 'resource.gathering',
+      proficiency01: 0.2,
+      practiceCount: 1,
+      lastPracticedTick: 5,
+    });
+    const proficiencyHash = hashWorldState(simulation);
+    expect(proficiencyHash).not.toBe(initial);
+    skills.skills[0]!.practiceCount = 2;
+    expect(hashWorldState(simulation)).not.toBe(proficiencyHash);
+
+    const state = simulation.entities.getComponent(human, NeedsState);
+    if (state === undefined) {
+      simulation.entities.addComponent(human, NeedsState, {
+        action: 'gatherFood',
+        targetX: 0,
+        targetZ: 0,
+        resourceId: 'berry:hash',
+        resourceOwnerChunkKey: '0:0',
+        resourceLocalId: 1,
+        resourceConceptId: 'berry:red',
+        foodIntent: 'satisfyNeed',
+        gatherStartedTick: 10,
+        mealStartedTick: -1,
+        mealHungerBefore01: 0,
+        untilTick: 18,
+        mealMaxGain: 1,
+        poisoningUntilTick: -1,
+        poisoningToxicity01: 0,
+        currentMealCausedPoisoning: false,
+        pathFailedAtTick: -1,
+      });
+    } else {
+      state.gatherStartedTick = 10;
+      state.untilTick = 18;
+    }
+    const gatheringHash = hashWorldState(simulation);
+    simulation.entities.getComponentOrThrow(human, NeedsState).untilTick = 19;
+    expect(hashWorldState(simulation)).not.toBe(gatheringHash);
+    simulation.dispose();
+  });
+
   it('change quand une croyance change', () => {
     const simulation = new Simulation({
       seed: 'hash-belief',
@@ -346,12 +394,11 @@ describe('hashWorldState — sensibilité aux composants cognitifs', () => {
       },
     });
     const motivationHash = hashWorldState(simulation);
+    const ingestion = memory.episodic[0]!.experience;
+    if (ingestion?.kind !== 'food.ingestion') throw new Error('ingestion attendue');
     memory.episodic[0] = {
       ...memory.episodic[0]!,
-      experience: {
-        ...memory.episodic[0]!.experience!,
-        motivation: 'deliberateExperiment',
-      },
+      experience: { ...ingestion, motivation: 'deliberateExperiment' },
     };
     expect(hashWorldState(simulation)).not.toBe(motivationHash);
     simulation.dispose();

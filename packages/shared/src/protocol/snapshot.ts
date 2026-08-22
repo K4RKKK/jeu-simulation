@@ -41,7 +41,7 @@ export const humanProfileSchema = z.object({
 });
 export type HumanProfile = z.infer<typeof humanProfileSchema>;
 
-export const activityKindSchema = z.enum(['idle', 'walking', 'drink', 'eat', 'rest']);
+export const activityKindSchema = z.enum(['idle', 'walking', 'gather', 'drink', 'eat', 'rest']);
 export type ActivityKind = z.infer<typeof activityKindSchema>;
 
 export const needsSnapshotSchema = z.object({

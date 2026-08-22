@@ -27,11 +27,11 @@ export const Needs = defineComponent<NeedsComponent>('Needs');
  * pas avec une action vitale en cours.
  *
  * - `seekWater` / `seekFood` : en déplacement vers la cible ; l'action commence à l'arrivée.
- * - `drink` / `eat` / `rest` : action en cours, jusqu'à `untilTick` ou satisfaction du but.
+ * - `gatherFood` / `drink` / `eat` / `rest` : action atomique en cours.
  * - `none` : aucun plan ; l'individu est libre d'errer.
  */
 export interface NeedsStateComponent {
-  action: 'none' | 'seekWater' | 'seekFood' | 'drink' | 'eat' | 'rest';
+  action: 'none' | 'seekWater' | 'seekFood' | 'gatherFood' | 'drink' | 'eat' | 'rest';
   targetX: number | null;
   targetZ: number | null;
   /** Ressource visée par `seekFood`/`eat` — sert à la retirer quand elle est consommée. */
@@ -47,6 +47,8 @@ export interface NeedsStateComponent {
   resourceConceptId: string | null;
   /** Motivation conservée pendant le trajet et l'ingestion atomique. */
   foodIntent: FoodActionIntent | null;
+  /** Début de la manipulation physique; `untilTick` fige sa durée au démarrage. */
+  gatherStartedTick?: number;
   mealStartedTick: number;
   mealHungerBefore01: number;
   untilTick: number;

@@ -4,6 +4,7 @@ import { InteractiveResource } from '../components/index.js';
 import { Simulation } from '../simulation.js';
 import {
   beginResourceInteraction,
+  commitResourceGathering,
   endResourceInteraction,
   findInteractiveResource,
   harvestInteractiveResource,
@@ -22,6 +23,119 @@ function resourceOf(simulation: Simulation, requireSeveralServings = false): Res
 }
 
 describe('Cycle StaticResource → InteractiveResource → StaticResource', () => {
+  it('commits the final portion with its physical food payload intact', () => {
+    const simulation = new Simulation({
+      seed: 'interactive-final-payload',
+      spawnInitialPopulation: false,
+      systems: [],
+    });
+    const spawn = resourceOf(simulation);
+    const actor = simulation.entities.createEntity();
+    const resourceEntity = beginResourceInteraction(
+      simulation.entities,
+      simulation.world,
+      actor,
+      spawn.id,
+      spawn.ownerChunkKey,
+      1,
+    )!;
+    const interactive = simulation.entities.getComponentOrThrow(
+      resourceEntity,
+      InteractiveResource,
+    );
+    interactive.remainingServings = 1;
+    interactive.remainingFraction01 = 1 / interactive.harvestServings;
+    simulation.world.delta.patch(
+      spawn.id,
+      spawn.ownerChunkKey,
+      spawn.localId,
+      { remainingFraction01: 1 / spawn.harvestServings },
+      1,
+    );
+
+    const result = commitResourceGathering(
+      simulation.entities,
+      simulation.world,
+      resourceEntity,
+      actor,
+      2,
+    );
+
+    expect(result).toMatchObject({
+      committed: true,
+      foodKcal: spawn.foodKcal,
+      foodToxicity01: spawn.foodToxicity01,
+      harvestServings: spawn.harvestServings,
+      remainingServings: 0,
+    });
+    expect(simulation.world.delta.isDepleted(spawn.id)).toBe(true);
+    simulation.dispose();
+  });
+
+  it('allows only one commit when two gatherers target the final portion', () => {
+    const simulation = new Simulation({
+      seed: 'interactive-final-race',
+      spawnInitialPopulation: false,
+      systems: [],
+    });
+    const spawn = resourceOf(simulation);
+    const actorA = simulation.entities.createEntity();
+    const actorB = simulation.entities.createEntity();
+    const resourceEntity = beginResourceInteraction(
+      simulation.entities,
+      simulation.world,
+      actorA,
+      spawn.id,
+      spawn.ownerChunkKey,
+      1,
+    )!;
+    beginResourceInteraction(
+      simulation.entities,
+      simulation.world,
+      actorB,
+      spawn.id,
+      spawn.ownerChunkKey,
+      1,
+    );
+    const interactive = simulation.entities.getComponentOrThrow(
+      resourceEntity,
+      InteractiveResource,
+    );
+    interactive.remainingServings = 1;
+    interactive.remainingFraction01 = 1 / interactive.harvestServings;
+    simulation.world.delta.patch(
+      spawn.id,
+      spawn.ownerChunkKey,
+      spawn.localId,
+      { remainingFraction01: 1 / spawn.harvestServings },
+      1,
+    );
+
+    const first = commitResourceGathering(
+      simulation.entities,
+      simulation.world,
+      resourceEntity,
+      actorA,
+      2,
+    );
+    const second = commitResourceGathering(
+      simulation.entities,
+      simulation.world,
+      resourceEntity,
+      actorB,
+      2,
+    );
+    expect(first.committed).toBe(true);
+    expect(second).toEqual({ committed: false, reason: 'depleted' });
+    expect(endResourceInteraction(simulation.entities, actorA, spawn.id)).toBe(false);
+    expect(
+      simulation.entities.getComponentOrThrow(resourceEntity, InteractiveResource)
+        .interactingEntityIds,
+    ).toEqual([actorB]);
+    expect(endResourceInteraction(simulation.entities, actorB, spawn.id)).toBe(true);
+    simulation.dispose();
+  });
+
   it('promeut une seule entité ECS partagée par plusieurs acteurs', () => {
     const simulation = new Simulation({
       seed: 'interactive-promotion',
